@@ -1,0 +1,83 @@
+{
+  "name": "oneplus-toolbox",
+  "productName": "一加工具箱",
+  "version": "0.1.0",
+  "description": "一加手机刷机辅助工具：解锁 Bootloader、一键 Root（Magisk / APatch / KernelSU）、A/B 槽位、应用双开",
+  "author": "oneplus-toolbox contributors",
+  "license": "Apache-2.0",
+  "main": "out/main/index.js",
+  "private": true,
+  "scripts": {
+    "fetch-tools": "node scripts/fetch-tools.mjs",
+    "screenshots": "node scripts/screenshots/index.mjs",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dist": "npm run fetch-tools && electron-vite build && electron-builder --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "7zip-bin": "^5.2.0",
+    "electron": "44.7.2",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "lucide-react": "1.57.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  },
+  "build": {
+    "appId": "io.github.oneplus-toolbox",
+    "productName": "一加工具箱",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/bin",
+        "to": "bin"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis"
+        },
+        {
+          "target": "portable"
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "OnePlusToolbox-${version}-setup.${ext}"
+    },
+    "artifactName": "OnePlusToolbox-${version}-${arch}.${ext}",
+    "portable": {
+      "artifactName": "OnePlusToolbox-${version}-portable.${ext}"
+    }
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true
+  }
+}

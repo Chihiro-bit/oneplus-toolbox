@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-10-14",
+  "schemes": [
+    {
+      "id": "magisk",
+      "name": "Magisk",
+      "family": "magisk",
+      "version": "30.7",
+      "package": "com.topjohnwu.magisk",
+      "apk": {
+        "url": "https://github.com/topjohnwu/Magisk/releases/download/v30.7/Magisk-v30.7.apk",
+        "sha256": "e0d32d2123532860f97123d927b1bb86c4e08e6fd8a48bfc6b5bee0afae9ebd5",
+        "size": 11613864
+      },
+      "homepage": "https://github.com/topjohnwu/Magisk",
+      "note": "最通用的方案。部分老机型（一加 7T / 8 / 8T / 9R 等）不适用"
+    },
+    {
+      "id": "apatch",
+      "name": "APatch",
+      "family": "apatch",
+      "version": "11224",
+      "package": "me.bmax.apatch",
+      "apk": {
+        "url": "https://github.com/bmax121/APatch/releases/download/11224/APatch_11224_9a63e0f_HEAD-release-signed.apk",
+        "sha256": "f1986f9a9c3b2b2d5ca09aa6b9ef24226fef662f8faf5677ce1447ffcae68590",
+        "size": 6569091
+      },
+      "homepage": "https://github.com/bmax121/APatch",
+      "note": "修补内核（boot），需要设置超级密钥。一加 8 / 8 Pro 不支持"
+    },
+    {
+      "id": "kernelsu",
+      "name": "KernelSU",
+      "family": "ksu",
+      "version": "3.3.1",
+      "package": "me.weishu.kernelsu",
+      "apk": {
+        "url": "https://github.com/tiann/KernelSU/releases/download/v3.3.1/KernelSU_v3.3.1_32680-release.apk",
+        "sha256": "b4a059ace71de2fa65cc7f12b1c58d55fc23ab25e057ee4230ce779742abe450",
+        "size": 13637206
+      },
+      "homepage": "https://github.com/tiann/KernelSU",
+      "note": "仅支持 GKI 2.0 设备（Android 12 及以后出厂，内核 5.10+）。不支持时修补会失败，不会刷入任何东西"
+    },
+    {
+      "id": "kernelsu-next",
+      "name": "KernelSU Next",
+      "family": "ksu",
+      "version": "3.4.2",
+      "package": "com.rifsxd.ksunext",
+      "apk": {
+        "url": "https://github.com/KernelSU-Next/KernelSU-Next/releases/download/v3.4.2/KernelSU_Next_v3.4.2_33355-release.apk",
+        "sha256": "774a5511f7034a4930e881114e202319cbdc34c5aaaa5c7c6b6d2902364e4c58",
+        "size": 16682167
+      },
+      "homepage": "https://github.com/KernelSU-Next/KernelSU-Next",
+      "note": "仅支持 GKI 2.0 设备"
+    },
+    {
+      "id": "sukisu-ultra",
+      "name": "SukiSU Ultra",
+      "family": "ksu",
+      "version": "4.2.0",
+      "package": "com.sukisu.ultra",
+      "apk": {
+        "url": "https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases/download/v4.2.0/SukiSU_v4.2.0_40900-release.apk",
+        "sha256": "4ca9810e6355fbff0bbe4bf5ce159808e64a40d85987a11894030cd990a6bdf3",
+        "size": 14084162
+      },
+      "homepage": "https://github.com/SukiSU-Ultra/SukiSU-Ultra",
+      "note": "仅支持 GKI 2.0 设备"
+    }
+  ]
+}
