@@ -1,13 +1,22 @@
 // 主进程与渲染进程共用的类型
 
-/** none=未连接，system=开机(adb)，recovery=Recovery(adb)，fastboot=Fastboot，unauthorized=adb 未授权，edl=高通 9008 深刷 */
-export type DeviceMode = 'none' | 'system' | 'recovery' | 'fastboot' | 'unauthorized' | 'edl'
+/**
+ * none=未连接，system=开机(adb)，recovery=Recovery(adb)，fastboot=Bootloader 里的 Fastboot，
+ * fastbootd=用户空间 Fastboot（刷逻辑分区、取消未合并的更新时用），unauthorized=adb 未授权，edl=高通 9008 深刷
+ */
+export type DeviceMode = 'none' | 'system' | 'recovery' | 'fastboot' | 'fastbootd' | 'unauthorized' | 'edl'
 
 export interface DeviceInfo {
   mode: DeviceMode
   serial?: string
   /** 同时连接了多台设备 */
   multiple?: boolean
+  /** 连着多台时的全部设备，供界面选择 */
+  devices?: { serial: string; mode: DeviceMode; label?: string }[]
+  /** 连着多台时选中的序列号（可能不在线，例如正卡在开机） */
+  selected?: string
+  /** 连着多台、但当前显示的这台不是选中的：操作会被拒绝 */
+  needsPick?: boolean
   model?: string
   brand?: string
   manufacturer?: string
@@ -16,13 +25,15 @@ export interface DeviceInfo {
   buildId?: string
   romVersion?: string
   slot?: string
-  /** 仅 fastboot 下可读 */
+  /** 仅 fastboot / fastbootd 下可读 */
   unlocked?: boolean
   /** 仅 edl 下可读：QDLoader 9008 占用的 COM 端口，如 COM5 */
   edlPort?: string
+  /** 仅开机下可读：Root 状态，如「Magisk 30.7」「未 Root」 */
+  root?: string
 }
 
-export type RebootTarget = 'system' | 'recovery' | 'bootloader' | 'edl'
+export type RebootTarget = 'system' | 'recovery' | 'bootloader' | 'fastbootd' | 'edl'
 
 export type PatchTarget = 'auto' | 'boot' | 'init_boot'
 
@@ -131,11 +142,134 @@ export interface RootOptions {
   uninstallOthers: boolean
 }
 
+export interface UnrootOptions {
+  /** 与手机系统版本一致的全量包：本地路径或 http(s) URL */
+  rom: string
+  /** 刷完开机后卸载 Root 管理器 App */
+  uninstallManagers: boolean
+  /** Fastboot 下读不到手机的系统版本时，仍然继续（只给警告） */
+  allowUnverified: boolean
+}
+
+/** 可以从 ROM 刷回的原厂分区 */
+export type StockPartition = 'init_boot' | 'boot' | 'vendor_boot' | 'dtbo' | 'vbmeta' | 'vbmeta_system' | 'vbmeta_vendor'
+
+export interface RestoreOptions {
+  rom: string
+  partitions: StockPartition[]
+  allowUnverified: boolean
+}
+
+/** device=已 Root 时用 dd 从手机读出分区，rom=从 ROM 提取原厂镜像 */
+export interface BackupOptions {
+  source: 'device' | 'rom'
+  rom?: string
+}
+
+/** 设备管理器里和手机有关的一项 */
+export interface DriverEntry {
+  name: string
+  instanceId: string
+  ok: boolean
+  className?: string
+  /** 异常说明，如「没有安装驱动（代码 28）」 */
+  problem?: string
+  /** 该装哪个驱动 */
+  hint?: string
+}
+
+/** 手机内置存储里的一项 */
+export interface RemoteEntry {
+  name: string
+  dir: boolean
+  size: number
+  /** 修改时间（毫秒） */
+  mtime: number
+}
+
+export type WirelessRequest =
+  | { action: 'pair'; host: string; port: string; code: string }
+  | { action: 'connect'; host: string; port: string }
+  | { action: 'disconnect' }
+  | { action: 'fromUsb' }
+
+// ───────────── 刷写记录 ─────────────
+
+/** root=刷入修补镜像，unroot=刷回原厂 boot / init_boot，restore=从 ROM 刷回指定的原厂分区，undo=撤销上一次刷写 */
+export type FlashKind = 'root' | 'unroot' | 'restore' | 'undo'
+
+export interface FlashRecord {
+  id: string
+  time: number
+  serial: string
+  kind: FlashKind
+  /** Root 方案名 */
+  scheme?: string
+  /** 刷写的槽位（a / b） */
+  slot?: string
+  /** 刷写时手机的系统版本；ro.build.date.utc 用来判断手机后来有没有升级过 */
+  build: { buildId?: string; romVersion?: string; buildDateUtc?: string }
+  partitions: { name: string; source: 'patched' | 'stock'; sha256: string }[]
+  /** 被覆盖分区的原厂镜像备份，撤销时刷回 */
+  backups: Record<string, { path: string; sha256: string }>
+  status: 'started' | 'ok' | 'failed'
+  /** 已经被撤销 */
+  undone?: boolean
+}
+
+// ───────────── 开机诊断 ─────────────
+
+export interface SlotState {
+  successful?: boolean
+  unbootable?: boolean
+  retryCount?: number
+}
+
+/** 开机诊断采集到的设备状态。读不到的字段留空，规则按「未知」处理 */
+export interface BootState {
+  /** 采集时手机所处的模式 */
+  mode: DeviceMode
+  serial?: string
+  currentSlot?: 'a' | 'b'
+  slots: Partial<Record<'a' | 'b', SlotState>>
+  unlocked?: boolean
+  /** oem device-info 的 Device critical unlocked（只有 bootloader 下能读） */
+  criticalUnlocked?: boolean
+  /** snapshot-update-status：none / snapshotted / merging 等 */
+  snapshotStatus?: string
+  /** 卡开机时，开机过程中 adb 连上过 */
+  adbDuringBoot?: boolean
+  /** sys.boot_completed = 1 */
+  bootCompleted?: boolean
+  /** logcat -b crash 的最后几十行 */
+  crashLog?: string
+  root?: string
+  /** 采集过程中的说明，例如哪些字段读不到 */
+  notes: string[]
+}
+
+/** 用户看到的现象 */
+export type BootSymptom = 'logo' | 'bootloop' | 'crashdump' | 'destroyed' | 'recovery'
+
+/** 出问题前最后做的操作（用户选择；有刷写记录时预先选好） */
+export type LastAction = 'root' | 'module' | 'ota' | 'flash' | 'unknown'
+
+/** disable=给每个模块写 disable 文件（可恢复），enable=删掉 disable 文件，remove=magisk --remove-modules（删除） */
+export type ModuleAction = 'disable' | 'enable' | 'remove'
+
 export interface AppEntry {
   package: string
   label: string
   /** 已在双开空间（用户 999）中 */
   cloned: boolean
+  /** 以下仅系统应用列表有：预装应用 */
+  system?: boolean
+  /** 已对当前用户卸载（pm uninstall --user 0） */
+  removed?: boolean
+  /** 已停用 */
+  disabled?: boolean
+  /** 系统必需组件，不允许卸载 */
+  protected?: boolean
 }
 
 export type OperationRequest =
@@ -144,8 +278,25 @@ export type OperationRequest =
   | { kind: 'relock' }
   | { kind: 'switchSlot' }
   | { kind: 'root'; options: RootOptions }
+  | { kind: 'unroot'; options: UnrootOptions }
+  | { kind: 'restoreStock'; options: RestoreOptions }
+  | { kind: 'undoFlash' }
+  | { kind: 'backup'; options: BackupOptions }
+  | { kind: 'driverCheck' }
+  | { kind: 'screenshot' }
+  | { kind: 'wireless'; request: WirelessRequest }
+  | { kind: 'listRemote'; path: string }
+  | { kind: 'pushFiles'; files: string[]; to: string }
+  | { kind: 'pullFile'; path: string }
+  | { kind: 'bootCollect'; waitAdb: boolean }
+  | { kind: 'snapshotUpdate'; action: 'cancel' | 'merge' }
+  | { kind: 'modules'; action: ModuleAction }
+  | { kind: 'installApps'; files: string[] }
+  | { kind: 'exportDiagnostics' }
   | { kind: 'listApps' }
   | { kind: 'cloneApp'; package: string; enable: boolean }
+  | { kind: 'listSystemApps' }
+  | { kind: 'debloat'; package: string; remove: boolean }
   | { kind: 'installPlay'; apk: string }
   | { kind: 'otaUpdates'; disable: boolean }
   | { kind: 'edlDetect' }
@@ -170,6 +321,12 @@ export interface OperationResult {
   apps?: AppEntry[]
   /** 9008 检测 / 自检的结果 */
   edl?: EdlState
+  /** listRemote 的结果 */
+  remote?: { path: string; entries: RemoteEntry[] }
+  /** driverCheck 的结果 */
+  drivers?: DriverEntry[]
+  /** bootCollect 的结果 */
+  bootState?: BootState
 }
 
 export interface Settings {
@@ -184,11 +341,15 @@ export interface UpdateInfo {
   latest?: string
   url?: string
   hasUpdate: boolean
+  /** 安装版可以自动下载替换；便携版只能去发布页下载 */
+  canAuto: boolean
   error?: string
 }
 
 export interface ToolboxApi {
   getDevice(): Promise<DeviceInfo>
+  /** 连着多台设备时，选择要操作的那一台 */
+  selectDevice(serial: string): Promise<void>
   onDevice(cb: (d: DeviceInfo) => void): () => void
   onLog(cb: (e: LogEntry) => void): () => void
   onStep(cb: (step: string) => void): () => void
@@ -208,6 +369,19 @@ export interface ToolboxApi {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<Settings>
   checkUpdate(): Promise<UpdateInfo>
+  /** 下载新版本（只用于安装版） */
+  downloadUpdate(): Promise<{ ok: boolean; message: string }>
+  onUpdateProgress(cb: (percent: number) => void): () => void
+  /** 退出并安装已下载的新版本 */
+  installUpdate(): Promise<void>
   openPath(p: string): Promise<void>
   openExternal(url: string): Promise<void>
+  /** 打开 scrcpy 投屏窗口（不占用操作队列） */
+  startMirror(opts: { turnScreenOff: boolean; stayAwake: boolean }): Promise<OperationResult>
+  /** 这台设备的刷写记录（旧的在前） */
+  getHistory(serial: string): Promise<FlashRecord[]>
+  /** 打开日志文件夹 */
+  openLogDir(): Promise<void>
+  /** 拖拽进来的文件在磁盘上的路径 */
+  pathForFile(file: File): string
 }

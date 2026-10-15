@@ -14,6 +14,10 @@
 | aapt2（Android arm64 构建） | ReVanced/aapt2 v1.1.0 | 推送到手机上读取应用名称和图标 | AOSP 源码为 Apache-2.0；构建脚本为 GPL-3.0 | <https://github.com/ReVanced/aapt2>、<https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/tools/aapt2/> |
 | qdl（qdl.exe 及其自带的 MinGW 运行库 DLL） | 2.8 | 与处于 9008（EDL）模式的设备通信、刷写分区 | BSD-3-Clause，许可证全文随附在 `qdl/LICENSE` | <https://github.com/linux-msm/qdl> |
 | Magisk（APK） | 30.7 | 离线 Root 方案 | GPL-3.0 | <https://github.com/topjohnwu/Magisk> |
+| scrcpy（scrcpy.exe、scrcpy-server，许可证全文随附在 `scrcpy/LICENSE.txt`） | 5.0.1 | 投屏和控制手机 | Apache-2.0 | <https://github.com/Genymobile/scrcpy> |
+| scrcpy 自带的 FFmpeg（avcodec、avformat、avutil、swresample DLL） | 随 scrcpy 5.0.1 | 视频解码 | GNU LGPL-2.1 或更高版本 | <https://ffmpeg.org/> |
+| scrcpy 自带的 SDL3（SDL3.dll） | 随 scrcpy 5.0.1 | 投屏窗口、输入 | zlib | <https://github.com/libsdl-org/SDL> |
+| scrcpy 自带的 libusb（libusb-1.0.dll） | 随 scrcpy 5.0.1 | USB 通信（OTG 模式） | GNU LGPL-2.1 或更高版本 | <https://github.com/libusb/libusb> |
 
 ## 运行时按需下载（不随安装包分发）
 
@@ -34,5 +38,6 @@
 | Electron（含 Chromium、Node.js） | MIT，Chromium 等组件的声明见安装目录下的 `LICENSES.chromium.html` |
 | React、React DOM | MIT |
 | lucide-react | ISC |
+| electron-updater 及其依赖（builder-util-runtime、js-yaml、semver、fs-extra 等） | MIT / ISC，详见各包的 LICENSE |
 
 这些组件的版权归各自作者所有。本项目与上述任何项目、Google、OnePlus 均无隶属或背书关系。

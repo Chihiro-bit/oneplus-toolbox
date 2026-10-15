@@ -20,6 +20,8 @@ export const tools = {
   get magiskApk() { return join(binDir(), 'magisk.apk') },
   /** Android 端的 aapt2，推到手机上读取应用名 */
   get aapt2() { return join(binDir(), 'aapt2') },
+  /** 投屏，随附的 DLL 和 scrcpy-server 必须与它同目录 */
+  get scrcpy() { return join(binDir(), 'scrcpy', 'scrcpy.exe') },
   /** 高通 9008 / EDL 刷写工具，随附的 DLL 必须与它同目录 */
   get qdl() { return join(binDir(), 'qdl', 'qdl.exe') }
 }

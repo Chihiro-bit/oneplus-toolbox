@@ -51,6 +51,9 @@ jobs:
         with:
           draft: true
           generate_release_notes: true
+          # latest.yml 和 .blockmap 供安装版的自动更新使用（electron-updater 读取并校验 sha512）
           files: |
             release/OnePlusToolbox-*.exe
+            release/OnePlusToolbox-*.exe.blockmap
+            release/latest.yml
             release/SHA256SUMS.txt

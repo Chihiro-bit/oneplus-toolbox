@@ -3,11 +3,13 @@ import { spawnSync } from 'node:child_process'
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import type { DeviceInfo, LogEntry, LogLevel, OperationRequest, OperationResult, Settings } from '@shared/types'
 import { getCatalog } from './catalog'
-import { describe, detect } from './device'
+import { describe, detect, selectDevice } from './device'
 import { CancelledError, missingTools, tools } from './exec'
-import { isOpError, loadIcons, runOperation } from './ops'
+import { history } from './history'
+import { appendLog, logDir, pruneLogs } from './logfile'
+import { isOpError, loadIcons, runOperation, startMirror, stopMirror } from './ops'
 import { loadSettings, saveSettings } from './settings'
-import { checkUpdate } from './update'
+import { checkUpdate, downloadUpdate, installUpdate } from './update'
 
 let win: BrowserWindow | null = null
 let current: DeviceInfo = { mode: 'none' }
@@ -20,6 +22,7 @@ function send(channel: string, payload: unknown): void {
 function log(level: LogLevel, text: string): void {
   const entry: LogEntry = { time: Date.now(), level, text }
   send('log', entry)
+  appendLog(entry)
 }
 
 function setDevice(d: DeviceInfo): void {
@@ -34,7 +37,7 @@ async function poll(): Promise<void> {
   if (!busy) {
     try {
       const d = await detect()
-      const key = `${d.mode}|${d.serial ?? ''}|${d.multiple ? 1 : 0}`
+      const key = `${d.mode}|${d.serial ?? ''}|${d.needsPick ? 1 : 0}|${(d.devices ?? []).map((x) => `${x.serial}:${x.mode}`).join(',')}`
       if (key !== lastKey) {
         lastKey = key
         setDevice(d)
@@ -54,6 +57,10 @@ async function poll(): Promise<void> {
 // ───────────── IPC ─────────────
 
 ipcMain.handle('device:get', () => current)
+ipcMain.handle('device:select', (_e, serial: string) => {
+  selectDevice(serial)
+  lastKey = '' // 下一轮轮询立即刷新
+})
 
 ipcMain.handle('op:run', async (_e, req: OperationRequest): Promise<OperationResult> => {
   if (busy) return { ok: false, message: '已有操作正在进行' }
@@ -70,7 +77,7 @@ ipcMain.handle('op:run', async (_e, req: OperationRequest): Promise<OperationRes
       device: setDevice
     })
     log(result.ok ? 'ok' : 'error', result.message)
-    if (req.kind === 'listApps' && result.ok) loadIcons((icons) => send('apps:icons', icons)).catch(() => {})
+    if ((req.kind === 'listApps' || req.kind === 'listSystemApps') && result.ok) loadIcons((icons) => send('apps:icons', icons)).catch(() => {})
     return result
   } catch (e) {
     const message =
@@ -145,11 +152,16 @@ ipcMain.handle('settings:set', async (_e, s: Settings) => {
   return saved
 })
 ipcMain.handle('update:check', () => checkUpdate())
+ipcMain.handle('update:download', () => downloadUpdate((p) => send('update:progress', p)))
+ipcMain.handle('update:install', () => installUpdate())
 
 ipcMain.handle('shell:openPath', (_e, p: string) => shell.showItemInFolder(p))
 ipcMain.handle('shell:openExternal', (_e, url: string) => {
   if (/^https?:\/\//.test(url)) return shell.openExternal(url)
 })
+ipcMain.handle('shell:openLogDir', () => shell.openPath(logDir()))
+ipcMain.handle('mirror:start', (_e, opts: { turnScreenOff: boolean; stayAwake: boolean }) => startMirror(opts, log))
+ipcMain.handle('history:get', (_e, serial: string) => history(serial))
 
 function describeRequest(req: OperationRequest): string {
   switch (req.kind) {
@@ -163,8 +175,42 @@ function describeRequest(req: OperationRequest): string {
       return '切换 A/B 槽位'
     case 'root':
       return `Root（${req.options.schemeId}）`
+    case 'unroot':
+      return '刷回原厂镜像'
+    case 'restoreStock':
+      return `刷回原厂 ${req.options.partitions.join('、')}`
+    case 'undoFlash':
+      return '撤销上一次刷写'
+    case 'bootCollect':
+      return '开机诊断：采集设备状态'
+    case 'driverCheck':
+      return '检查驱动'
+    case 'screenshot':
+      return '截图'
+    case 'wireless':
+      return { pair: '无线调试配对', connect: '无线连接', disconnect: '断开无线连接', fromUsb: '切换到无线调试' }[req.request.action]
+    case 'listRemote':
+      return `浏览 ${req.path}`
+    case 'pushFiles':
+      return `发送 ${req.files.length} 个文件到手机`
+    case 'pullFile':
+      return `从手机接收 ${req.path}`
+    case 'backup':
+      return req.options.source === 'device' ? '备份关键分区' : '从 ROM 保存原厂镜像'
+    case 'snapshotUpdate':
+      return req.action === 'cancel' ? '取消未合并的系统更新' : '继续合并系统更新'
+    case 'modules':
+      return { disable: '禁用全部模块', enable: '重新启用全部模块', remove: '删除全部 Magisk 模块' }[req.action]
+    case 'installApps':
+      return `安装应用（${req.files.length} 个文件）`
+    case 'exportDiagnostics':
+      return '导出诊断信息'
     case 'listApps':
       return '读取应用列表'
+    case 'listSystemApps':
+      return '读取系统应用列表'
+    case 'debloat':
+      return req.remove ? `卸载预装应用 ${req.package}` : `恢复预装应用 ${req.package}`
     case 'cloneApp':
       return req.enable ? `双开 ${req.package}` : `移除双开 ${req.package}`
     case 'installPlay':
@@ -224,6 +270,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  pruneLogs()
   createWindow()
   poll()
 })
@@ -232,5 +279,6 @@ app.on('window-all-closed', () => app.quit())
 
 // 退出时关闭 adb server，避免残留进程占用 5037 端口
 app.on('will-quit', () => {
+  stopMirror()
   spawnSync(tools.adb, ['kill-server'], { windowsHide: true, timeout: 3000 })
 })

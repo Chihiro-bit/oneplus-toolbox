@@ -1,8 +1,9 @@
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import {
   ArrowLeftRight,
   ArrowRight,
   Copy,
+  HardDrive,
   LifeBuoy,
   Lock,
   LockOpen,
@@ -11,11 +12,13 @@ import {
   ShieldAlert,
   Smartphone,
   Sparkles,
+  Stethoscope,
   Usb,
   Wrench,
   Zap
 } from 'lucide-react'
-import type { DeviceMode, RebootTarget } from '@shared/types'
+import { FEATURES } from '@shared/features'
+import type { DeviceMode, DriverEntry, RebootTarget } from '@shared/types'
 import type { PageId } from './App'
 import { isOnePlus, MODE_LABEL, type Toolbox } from './state'
 import { Callout, Card, ModeBadge, type ConfirmSpec } from './ui'
@@ -39,7 +42,7 @@ export function PageHeader({ title, desc }: { title: string; desc: string }) {
 export function useGate(tb: Toolbox, allowed: DeviceMode[]): { disabled: boolean; reason?: string } {
   if (tb.run.running) return { disabled: true, reason: '有操作正在进行' }
   if (tb.device.mode === 'none') return { disabled: true, reason: '未连接设备' }
-  if (tb.device.multiple) return { disabled: true, reason: '请只连接一台设备' }
+  if (tb.device.needsPick) return { disabled: true, reason: '连接了多台设备，请先在左下角选择要操作的那一台' }
   if (!allowed.includes(tb.device.mode))
     return { disabled: true, reason: `需要在 ${allowed.map((m) => MODE_LABEL[m]).join(' / ')} 模式下使用` }
   return { disabled: false }
@@ -49,6 +52,7 @@ export function useGate(tb: Toolbox, allowed: DeviceMode[]): { disabled: boolean
 
 export function OverviewPage({ tb, go }: PageProps) {
   const d = tb.device
+  const [drivers, setDrivers] = useState<DriverEntry[] | null>(null)
   const rows: [string, ReactNode][] = [
     ['设备代号', d.device],
     ['品牌', d.brand],
@@ -57,6 +61,7 @@ export function OverviewPage({ tb, go }: PageProps) {
     ['构建号', d.buildId],
     ['当前槽位', d.slot?.toUpperCase()],
     ['Bootloader', d.unlocked === undefined ? undefined : d.unlocked ? '已解锁' : '已锁定'],
+    ['Root', d.root],
     ['序列号', d.serial]
   ]
 
@@ -85,7 +90,10 @@ export function OverviewPage({ tb, go }: PageProps) {
           {d.mode === 'unauthorized' && (
             <p className="muted">手机上弹出了 USB 调试授权窗口，请勾选「始终允许」并点击「允许」。</p>
           )}
-          {d.multiple && <p className="warn-text">检测到多台设备，为避免误操作，请只保留一台。</p>}
+          {d.needsPick && <p className="warn-text">连接了多台设备。为避免误操作，请先在左下角选择要操作的那一台。</p>}
+          {d.mode === 'edl' && !FEATURES.edl && (
+            <p className="muted">手机处于 9008 模式。工具箱的 9008 功能暂时停用；退出方法：长按 音量上 + 电源键直到重启。</p>
+          )}
           {d.mode !== 'none' && d.mode !== 'unauthorized' && (
             <dl className="props">
               {rows
@@ -109,6 +117,16 @@ export function OverviewPage({ tb, go }: PageProps) {
             <span className="muted">安装 Google USB 驱动，或换一根支持数据传输的线、换一个 USB 口</span>
           </div>
           <button
+            className="btn btn-secondary"
+            disabled={tb.run.running}
+            onClick={async () => {
+              const r = await tb.start('检查驱动', { kind: 'driverCheck' })
+              setDrivers(r.drivers ?? null)
+            }}
+          >
+            检查驱动
+          </button>
+          <button
             className="btn btn-ghost"
             onClick={() => window.toolbox.openExternal('https://developer.android.com/studio/run/win-usb')}
           >
@@ -116,16 +134,35 @@ export function OverviewPage({ tb, go }: PageProps) {
           </button>
         </Card>
       )}
+      {d.mode === 'none' && drivers && drivers.length > 0 && (
+        <Card>
+          <h3 className="card-title">设备管理器里的手机</h3>
+          <ul className="driver-list">
+            {drivers.map((x) => (
+              <li key={x.instanceId} className={x.ok ? '' : 'bad'}>
+                <strong>{x.name}</strong>
+                <span className={x.ok ? 'ok-text small' : 'error-text small'}>{x.problem ?? '驱动正常'}</span>
+                {x.hint && <span className="muted small">{x.hint}</span>}
+                <code className="small muted">{x.instanceId}</code>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <h3 className="section-title">常用功能</h3>
       <div className="tiles">
-        <Tile icon={<Power size={20} />} title="重启与模式" desc="系统 / Recovery / Fastboot / EDL" onClick={() => go('reboot')} />
+        <Tile icon={<Power size={20} />} title="重启与模式" desc={`系统 / Recovery / Fastboot${FEATURES.edl ? ' / EDL' : ''}`} onClick={() => go('reboot')} />
         <Tile icon={<LockOpen size={20} />} title="解锁 Bootloader" desc="Root 的前置步骤" onClick={() => go('bootloader')} />
         <Tile icon={<Sparkles size={20} />} title="一键 Root" desc="Magisk / APatch / KernelSU 等 6 种方案" onClick={() => go('root')} />
+        <Tile icon={<Stethoscope size={20} />} title="开机诊断" desc="卡开机时找原因、给修复办法" onClick={() => go('diagnose')} />
+        <Tile icon={<LifeBuoy size={20} />} title="救援与恢复" desc="卸载 Root、撤销刷写、模块导致卡开机" onClick={() => go('rescue')} />
         <Tile icon={<ArrowLeftRight size={20} />} title="A/B 槽位切换" desc="变砖时的自救手段" onClick={() => go('slot')} />
-        <Tile icon={<LifeBuoy size={20} />} title="9008 救砖" desc="高通 EDL 深刷（需自备散包）" onClick={() => go('edl')} />
-        <Tile icon={<Copy size={20} />} title="应用双开" desc="把任意应用克隆到分身空间" onClick={() => go('apps')} />
-        <Tile icon={<Wrench size={20} />} title="系统工具" desc="Play 商店、禁用系统更新" onClick={() => go('tools')} />
+        {FEATURES.edl && (
+          <Tile icon={<HardDrive size={20} />} title="9008 救砖" desc="高通 EDL 深刷（需自备散包）" onClick={() => go('edl')} />
+        )}
+        <Tile icon={<Copy size={20} />} title="应用管理" desc="应用双开、卸载预装应用" onClick={() => go('apps')} />
+        <Tile icon={<Wrench size={20} />} title="系统工具" desc="安装应用、Play 商店、禁用系统更新" onClick={() => go('tools')} />
       </div>
     </>
   )
@@ -147,14 +184,17 @@ function Tile({ icon, title, desc, onClick }: { icon: ReactNode; title: string; 
 // ───────────── 重启 ─────────────
 
 const REBOOT_ITEMS: { target: RebootTarget; title: string; desc: string; icon: ReactNode; modes: DeviceMode[] }[] = [
-  { target: 'system', title: '重启到系统', desc: '正常开机', icon: <RotateCcw size={20} />, modes: ['system', 'recovery', 'fastboot'] },
-  { target: 'recovery', title: 'Recovery', desc: '部分机型不支持从 Fastboot 直接进入', icon: <Wrench size={20} />, modes: ['system', 'recovery', 'fastboot'] },
-  { target: 'bootloader', title: 'Fastboot', desc: '解锁、刷写分区时使用', icon: <Zap size={20} />, modes: ['system', 'recovery', 'fastboot'] },
-  { target: 'edl', title: 'EDL / 9008', desc: '高通线刷 / MTK 深刷模式，建议从开机状态进入', icon: <ShieldAlert size={20} />, modes: ['system', 'recovery', 'fastboot'] }
+  { target: 'system', title: '重启到系统', desc: '正常开机', icon: <RotateCcw size={20} />, modes: ['system', 'recovery', 'fastboot', 'fastbootd'] },
+  { target: 'recovery', title: 'Recovery', desc: '部分机型不支持从 Fastboot 直接进入', icon: <Wrench size={20} />, modes: ['system', 'recovery', 'fastboot', 'fastbootd'] },
+  { target: 'bootloader', title: 'Fastboot', desc: '解锁、刷写分区时使用', icon: <Zap size={20} />, modes: ['system', 'recovery', 'fastboot', 'fastbootd'] },
+  { target: 'fastbootd', title: 'fastbootd', desc: '用户空间的 Fastboot，取消未合并的系统更新、刷逻辑分区时用', icon: <Zap size={20} />, modes: ['system', 'recovery', 'fastboot', 'fastbootd'] },
+  ...(FEATURES.edl
+    ? [{ target: 'edl' as const, title: 'EDL / 9008', desc: '高通线刷 / MTK 深刷模式，建议从开机状态进入', icon: <ShieldAlert size={20} />, modes: ['system', 'recovery', 'fastboot', 'fastbootd'] as DeviceMode[] }]
+    : [])
 ]
 
 export function RebootPage({ tb, confirm }: PageProps) {
-  const gate = useGate(tb, ['system', 'recovery', 'fastboot'])
+  const gate = useGate(tb, ['system', 'recovery', 'fastboot', 'fastbootd'])
   return (
     <>
       <PageHeader title="重启与模式" desc="在开机、Recovery、Fastboot 之间切换" />
@@ -193,12 +233,12 @@ export function RebootPage({ tb, confirm }: PageProps) {
 // ───────────── Bootloader ─────────────
 
 export function BootloaderPage({ tb, confirm }: PageProps) {
-  const gate = useGate(tb, ['system', 'fastboot'])
+  const gate = useGate(tb, ['system', 'fastboot', 'fastbootd'])
   const d = tb.device
   return (
     <>
       <PageHeader title="Bootloader" desc="解锁是 Root 和刷第三方系统的前提。解锁、上锁都会清空手机全部数据" />
-      {d.mode === 'fastboot' && d.unlocked !== undefined && (
+      {(d.mode === 'fastboot' || d.mode === 'fastbootd') && d.unlocked !== undefined && (
         <Callout tone="info">当前 Bootloader 状态：{d.unlocked ? '已解锁' : '已锁定'}</Callout>
       )}
       <div className="action-grid two">
@@ -272,7 +312,7 @@ export function BootloaderPage({ tb, confirm }: PageProps) {
 // ───────────── A/B 槽位 ─────────────
 
 export function SlotPage({ tb, confirm }: PageProps) {
-  const gate = useGate(tb, ['system', 'recovery', 'fastboot'])
+  const gate = useGate(tb, ['system', 'recovery', 'fastboot', 'fastbootd'])
   const slot = tb.device.slot?.toUpperCase()
   return (
     <>

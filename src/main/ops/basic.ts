@@ -1,11 +1,13 @@
 import type { OperationResult, RebootTarget } from '@shared/types'
-import { describe, getvar, isUnlocked } from '../device'
-import { adb, ensureFastboot, fastboot, requireDevice, type OpContext } from './common'
+import { describe, getvar, isUnlocked, rootStatus } from '../device'
+import { lastFlash } from '../history'
+import { adb, ensureFastboot, fastboot, OpError, requireDevice, type OpContext } from './common'
 
 const NAMES: Record<RebootTarget, string> = {
   system: '系统',
   recovery: 'Recovery',
   bootloader: 'Fastboot',
+  fastbootd: 'fastbootd',
   edl: 'EDL（9008）'
 }
 
@@ -14,11 +16,12 @@ const NAMES: Record<RebootTarget, string> = {
 export async function reboot(target: RebootTarget, ctx: OpContext): Promise<OperationResult> {
   const d = await requireDevice(ctx)
   ctx.step(`正在重启到${NAMES[target]}`)
-  if (d.mode === 'fastboot') {
+  if (d.mode === 'fastboot' || d.mode === 'fastbootd') {
     const args: Record<RebootTarget, string[]> = {
       system: ['reboot'],
       recovery: ['reboot', 'recovery'],
       bootloader: ['reboot', 'bootloader'],
+      fastbootd: ['reboot', 'fastboot'],
       edl: ['reboot', 'emergency']
     }
     const r = await fastboot(d.serial, args[target], ctx)
@@ -31,6 +34,7 @@ export async function reboot(target: RebootTarget, ctx: OpContext): Promise<Oper
     system: ['reboot'],
     recovery: ['reboot', 'recovery'],
     bootloader: ['reboot', 'bootloader'],
+    fastbootd: ['reboot', 'fastboot'],
     edl: ['reboot', 'edl']
   }
   const r = await adb(d.serial, args[target], ctx)
@@ -40,7 +44,27 @@ export async function reboot(target: RebootTarget, ctx: OpContext): Promise<Oper
 
 // ───────────── 解锁 / 上锁 Bootloader ─────────────
 
+/**
+ * 上锁前确认系统没被改过：镜像被修补过时上锁，手机会因为校验失败起不来，而上锁后又不能再刷写，只能售后。
+ * 能查的有两处：开机时的 Root 状态，以及工具箱自己的刷写记录（最后一次是 Root 且没撤销）。
+ */
+async function checkStockBeforeLock(ctx: OpContext): Promise<void> {
+  const d = await requireDevice(ctx)
+  if (d.mode === 'system') {
+    const root = await rootStatus(d.serial, ctx.signal)
+    if (root && root !== '未 Root' && !root.startsWith('未检测到'))
+      throw new OpError(`手机当前是 ${root}，镜像被修改过，上锁后会无法开机。请先在「救援与恢复」里刷回原厂镜像再上锁`)
+  }
+  const last = lastFlash(d.serial)
+  if (last?.kind === 'root' && !last.undone)
+    throw new OpError(`工具箱记录到这台手机最后一次刷写是 Root（${last.scheme ?? ''}，${new Date(last.time).toLocaleDateString('zh-CN')}），之后没有刷回原厂。请先刷回原厂镜像再上锁`)
+}
+
 export async function setLock(unlock: boolean, ctx: OpContext): Promise<OperationResult> {
+  if (!unlock) {
+    ctx.step('正在检查系统是否为原厂状态')
+    await checkStockBeforeLock(ctx)
+  }
   const serial = await ensureFastboot(ctx)
   ctx.step('正在检测当前锁定状态')
   const state = await isUnlocked(serial, ctx.signal)

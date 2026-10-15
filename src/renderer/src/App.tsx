@@ -1,25 +1,30 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeftRight, ArrowUpCircle, Copy, Cpu, Home, LifeBuoy, LockKeyhole, Power, Settings, Smartphone, Sparkles, Wrench } from 'lucide-react'
+import { ArrowLeftRight, ArrowUpCircle, Copy, Cpu, HardDrive, Home, LifeBuoy, LockKeyhole, Power, Settings, Smartphone, Sparkles, Stethoscope, Wrench } from 'lucide-react'
+import { FEATURES } from '@shared/features'
 import type { UpdateInfo } from '@shared/types'
 import { AppsPage } from './apps'
+import { BootDiagPage } from './bootdiag'
 import { EdlPage } from './edl'
 import { BootloaderPage, OverviewPage, RebootPage, SlotPage } from './pages'
+import { RescuePage } from './rescue'
 import { RootPage } from './root'
 import { SettingsPage } from './settings'
 import { isOnePlus, MODE_LABEL, useToolbox } from './state'
 import { ToolsPage } from './tools'
 import { BrandWarning, ConfirmDialog, LogPanel, ModeBadge, RunBanner, type ConfirmSpec } from './ui'
 
-export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'slot' | 'edl' | 'apps' | 'tools' | 'settings'
+export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'diagnose' | 'rescue' | 'slot' | 'edl' | 'apps' | 'tools' | 'settings'
 
 const NAV: { id: PageId; label: string; icon: typeof Home }[] = [
   { id: 'overview', label: '概览', icon: Home },
   { id: 'reboot', label: '重启与模式', icon: Power },
   { id: 'bootloader', label: 'Bootloader', icon: LockKeyhole },
   { id: 'root', label: '一键 Root', icon: Sparkles },
+  { id: 'diagnose', label: '开机诊断', icon: Stethoscope },
+  { id: 'rescue', label: '救援与恢复', icon: LifeBuoy },
   { id: 'slot', label: 'A/B 槽位', icon: ArrowLeftRight },
-  { id: 'edl', label: '9008 救砖', icon: LifeBuoy },
-  { id: 'apps', label: '应用双开', icon: Copy },
+  ...(FEATURES.edl ? [{ id: 'edl' as const, label: '9008 救砖', icon: HardDrive }] : []),
+  { id: 'apps', label: '应用管理', icon: Copy },
   { id: 'tools', label: '系统工具', icon: Wrench }
 ]
 
@@ -63,9 +68,32 @@ export default function App() {
           {navItem({ id: 'settings', label: '设置', icon: Settings })}
         </nav>
         {update && (
-          <button className="update-pill" onClick={() => window.toolbox.openExternal(update.url!)}>
+          <button className="update-pill" onClick={() => (update.canAuto ? setPage('settings') : window.toolbox.openExternal(update.url!))}>
             <ArrowUpCircle size={15} /> 新版本 {update.latest}
           </button>
+        )}
+        {device.devices && (
+          <div className="device-picker">
+            <label className="small muted" htmlFor="device-picker">
+              连接了 {device.devices.length} 台设备，操作哪一台？
+            </label>
+            <select
+              id="device-picker"
+              value={device.selected ?? ''}
+              disabled={tb.run.running}
+              onChange={(e) => window.toolbox.selectDevice(e.target.value)}
+            >
+              {!device.selected && <option value="">请选择…</option>}
+              {device.selected && !device.devices.some((x) => x.serial === device.selected) && (
+                <option value={device.selected}>{device.selected}（不在线）</option>
+              )}
+              {device.devices.map((x) => (
+                <option key={x.serial} value={x.serial}>
+                  {x.label ?? x.serial} · {MODE_LABEL[x.mode]}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
         <div className="sidebar-device" onClick={() => setPage('overview')}>
           <Smartphone size={18} />
@@ -85,8 +113,10 @@ export default function App() {
           {page === 'reboot' && <RebootPage {...props} />}
           {page === 'bootloader' && <BootloaderPage {...props} />}
           {page === 'root' && <RootPage {...props} />}
+          {page === 'diagnose' && <BootDiagPage {...props} />}
+          {page === 'rescue' && <RescuePage {...props} />}
           {page === 'slot' && <SlotPage {...props} />}
-          {page === 'edl' && <EdlPage {...props} />}
+          {FEATURES.edl && page === 'edl' && <EdlPage {...props} />}
           {page === 'apps' && <AppsPage {...props} />}
           {page === 'tools' && <ToolsPage {...props} />}
           {page === 'settings' && <SettingsPage {...props} />}

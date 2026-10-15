@@ -13,6 +13,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
     "dist": "npm run fetch-tools && electron-vite build && electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
@@ -28,7 +29,8 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "typescript": "5.9.3",
-    "vite": "7.3.7"
+    "vite": "7.3.7",
+    "vitest": "5.0.5"
   },
   "build": {
     "appId": "io.github.oneplus-toolbox",
@@ -51,6 +53,13 @@
       {
         "from": "THIRD_PARTY_NOTICES.md",
         "to": "THIRD_PARTY_NOTICES.md"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Chihiro-bit",
+        "repo": "oneplus-toolbox"
       }
     ],
     "win": {
@@ -79,5 +88,8 @@
     "esbuild@0.25.12": true,
     "esbuild@0.28.2": true,
     "electron-winstaller@5.4.0": true
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
   }
 }

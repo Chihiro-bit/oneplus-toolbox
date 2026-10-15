@@ -12,7 +12,9 @@ import { promisify } from 'node:util'
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const RENDERER = join(ROOT, 'out', 'renderer')
-const OUT = join(ROOT, 'docs', 'screenshots')
+// SHOTS_OUT 指定输出目录（预览用，不覆盖 docs），SHOTS_ONLY 只截指定的几张（逗号分隔）
+const OUT = process.env.SHOTS_OUT || join(ROOT, 'docs', 'screenshots')
+const ONLY = process.env.SHOTS_ONLY?.split(',')
 const PORT = 5179
 
 const SCENES = [
@@ -22,10 +24,11 @@ const SCENES = [
   { file: 'root-running', query: 'page=一键 Root&scene=root-running&logs=1' },
   { file: 'root-apatch', query: 'page=一键 Root&scene=apatch' },
   { file: 'bootloader', query: 'dev=fastboot&page=Bootloader&scene=unlock' },
-  { file: 'edl', query: 'dev=edl&page=9008 救砖&scene=edl' },
-  { file: 'apps', query: 'page=应用双开&scene=apps' },
+  { file: 'rescue', query: 'page=救援与恢复' },
+  { file: 'diagnose', query: 'dev=fastboot&page=开机诊断&scene=diagnose' },
+  { file: 'apps', query: 'page=应用管理&scene=apps' },
   { file: 'tools', query: 'page=系统工具' }
-]
+].filter((s) => !ONLY || ONLY.includes(s.file))
 
 const BROWSERS = [
   process.env.BROWSER,
@@ -90,7 +93,7 @@ for (const s of SCENES) {
     `--screenshot=${target}`,
     `http://localhost:${PORT}/?${encodeURI(s.query)}`
   ], { timeout: 60_000 })
-  console.log(`✓ docs/screenshots/${s.file}.png`)
+  console.log(`✓ ${target}`)
 }
 server.close()
 rmSync(profile, { recursive: true, force: true })

@@ -45,6 +45,7 @@ export const MODE_LABEL: Record<DeviceMode, string> = {
   system: '开机',
   recovery: 'Recovery',
   fastboot: 'Fastboot',
+  fastbootd: 'fastbootd',
   unauthorized: '未授权',
   edl: 'EDL (9008)'
 }

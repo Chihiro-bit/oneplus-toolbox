@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import type { DeviceInfo, LogEntry, ToolboxApi } from '@shared/types'
 
 function subscribe<T>(channel: string, cb: (v: T) => void): () => void {
@@ -9,6 +9,7 @@ function subscribe<T>(channel: string, cb: (v: T) => void): () => void {
 
 const api: ToolboxApi = {
   getDevice: () => ipcRenderer.invoke('device:get'),
+  selectDevice: (serial) => ipcRenderer.invoke('device:select', serial),
   onDevice: (cb) => subscribe<DeviceInfo>('device', cb),
   onLog: (cb) => subscribe<LogEntry>('log', cb),
   onStep: (cb) => subscribe<string>('step', cb),
@@ -24,8 +25,15 @@ const api: ToolboxApi = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (s) => ipcRenderer.invoke('settings:set', s),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  onUpdateProgress: (cb) => subscribe<number>('update:progress', cb),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
   openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
-  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  openLogDir: () => ipcRenderer.invoke('shell:openLogDir'),
+  getHistory: (serial) => ipcRenderer.invoke('history:get', serial),
+  startMirror: (opts) => ipcRenderer.invoke('mirror:start', opts),
+  pathForFile: (file) => webUtils.getPathForFile(file)
 }
 
 contextBridge.exposeInMainWorld('toolbox', api)

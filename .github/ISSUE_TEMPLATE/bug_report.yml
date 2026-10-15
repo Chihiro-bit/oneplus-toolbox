@@ -24,7 +24,7 @@ body:
     id: feature
     attributes:
       label: 出问题的功能
-      options: [设备识别, 重启与模式, Bootloader 解锁 / 上锁, 一键 Root, A/B 槽位, 应用双开, 系统工具, 其它]
+      options: [设备识别, 重启与模式, Bootloader 解锁 / 上锁, 一键 Root, 救援与恢复, A/B 槽位, 应用双开, 安装应用, 系统工具, 其它]
     validations:
       required: true
   - type: textarea
@@ -37,6 +37,7 @@ body:
   - type: textarea
     id: log
     attributes:
-      label: 日志
-      description: 展开界面底部的「日志」面板，复制相关内容粘贴到这里。请删除其中的序列号等个人信息
-      render: text
+      label: 诊断信息 / 日志
+      description: |
+        推荐：在「设置 → 日志与诊断」中点「导出诊断信息」，把生成的 .txt 文件拖到这里（序列号已自动打码）。
+        也可以展开界面底部的「日志」面板，复制相关内容粘贴到这里，请删除其中的序列号等个人信息。

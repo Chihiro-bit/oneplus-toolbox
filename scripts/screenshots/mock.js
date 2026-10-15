@@ -16,7 +16,8 @@
       androidVersion: '16',
       buildId: 'PJZ110_16.0.0.300(CN01)',
       romVersion: 'V16.0.0',
-      slot: 'a'
+      slot: 'a',
+      root: 'Magisk 30.7'
     },
     fastboot: { mode: 'fastboot', serial: '1a2b3c4d', model: 'OnePlus 13', brand: 'OnePlus', device: 'sun', slot: 'b', unlocked: true },
     edl: {
@@ -77,6 +78,50 @@
     ['info', '- Repacking boot image']
   ]
 
+  const SYSTEM_APPS = [
+    ['com.example.browser', '浏览器', true, false],
+    ['com.example.market', '应用商店', false, false],
+    ['com.example.game', '游戏中心', false, false],
+    ['com.example.weather', '天气', false, false],
+    ['com.android.systemui', '系统界面', false, true],
+    ['com.example.assistant', '智能助手', false, false]
+  ].map(([pkg, label, removed, prot]) => ({ package: pkg, label, cloned: false, system: true, removed, protected: prot }))
+
+  const REMOTE = [
+    { name: 'DCIM', dir: true, size: 3452, mtime: now },
+    { name: 'Download', dir: true, size: 3452, mtime: now },
+    { name: 'Music', dir: true, size: 3452, mtime: now },
+    { name: 'Pictures', dir: true, size: 3452, mtime: now },
+    { name: '会议记录.pdf', dir: false, size: 1_843_200, mtime: now },
+    { name: 'notes.txt', dir: false, size: 2_310, mtime: now }
+  ]
+
+  // 开机诊断：Root 后卡开机，一加 13 实测的槽位格式
+  const BOOT_STATE = {
+    mode: 'fastboot',
+    serial: '1a2b3c4d',
+    currentSlot: 'a',
+    slots: { a: { successful: false, unbootable: true, retryCount: 0 }, b: { successful: true, unbootable: false, retryCount: 7 } },
+    unlocked: true,
+    criticalUnlocked: false,
+    snapshotStatus: 'none',
+    notes: []
+  }
+  const HISTORY = [
+    {
+      id: 'h1',
+      time: now - 40 * 60_000,
+      serial: '1a2b3c4d',
+      kind: 'root',
+      scheme: 'Magisk',
+      slot: 'a',
+      build: { buildId: 'PJZ110_16.0.0.300(CN01)', buildDateUtc: '1785725462' },
+      partitions: [{ name: 'init_boot', source: 'patched', sha256: 'x' }],
+      backups: { init_boot: { path: 'C:\\Users\\me\\Documents\\一加工具箱\\backups\\init_boot.img', sha256: 'y' } },
+      status: 'ok'
+    }
+  ]
+
   const listeners = { log: [], step: [], icons: [] }
   const scene = q.get('scene') || ''
   let dirPicks = 0
@@ -100,6 +145,15 @@
           }, 30)
           return
         }
+        if (req.kind === 'listSystemApps') {
+          setTimeout(() => {
+            resolve({ ok: true, message: `共 ${SYSTEM_APPS.length} 个系统应用，其中 1 个已卸载`, apps: SYSTEM_APPS })
+            setTimeout(() => listeners.icons.forEach((cb) => cb(Object.fromEntries(SYSTEM_APPS.map((a, i) => [a.package, icon(i + 3, a.label)])))), 20)
+          }, 30)
+          return
+        }
+        if (req.kind === 'bootCollect') return setTimeout(() => resolve({ ok: true, message: '已读取 Fastboot 下的设备状态', bootState: BOOT_STATE }), 30)
+        if (req.kind === 'listRemote') return setTimeout(() => resolve({ ok: true, message: '/sdcard：6 项', remote: { path: '/sdcard', entries: REMOTE } }), 30)
         if (req.kind === 'edlDetect') {
           setTimeout(
             () => resolve({ ok: true, message: '已找到 1 台 9008 设备', edl: { ports: EDL_PORTS, qdlList: 'COM5', saharaOk: false } }),
@@ -131,9 +185,17 @@
     getCatalog: async () => (await import('/catalog.js')).default,
     getSettings: async () => ({ catalogUrl: '', updateRepo: 'example/oneplus-toolbox' }),
     setSettings: async (s) => s,
-    checkUpdate: async () => ({ current: '1.0.0', hasUpdate: false }),
+    checkUpdate: async () => ({ current: '1.0.0', hasUpdate: false, canAuto: true }),
     openPath: async () => {},
-    openExternal: async () => {}
+    openExternal: async () => {},
+    openLogDir: async () => {},
+    selectDevice: async () => {},
+    getHistory: async () => HISTORY,
+    startMirror: async () => ({ ok: true, message: '投屏窗口正在打开' }),
+    downloadUpdate: async () => ({ ok: false, message: '' }),
+    onUpdateProgress: () => () => {},
+    installUpdate: async () => {},
+    pathForFile: () => ''
   }
 
   // ───── 场景脚本：在界面渲染后模拟点击 ─────
@@ -170,6 +232,13 @@
       document.querySelector('.content').scrollTop = 330
     }
     if (scene === 'apps') click('button', '读取应用列表')
+    if (scene === 'diagnose') {
+      click('label', 'CrashDump')
+      await wait(50)
+      click('button', '读取状态并诊断')
+      await wait(150)
+      document.querySelector('.findings')?.closest('.card')?.scrollIntoView({ block: 'start' })
+    }
     if (scene === 'unlock') click('button', '开始解锁')
     if (scene === 'edl') {
       click('button', '检测设备')

@@ -1,12 +1,13 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { app } from 'electron'
 import { FAMILY_LABEL, KNOWN_MANAGERS } from '@shared/catalog'
-import type { OperationResult, RootFamily, RootOptions, RootScheme } from '@shared/types'
+import type { FlashRecord, OperationResult, RootFamily, RootOptions, RootScheme } from '@shared/types'
 import { findScheme } from '../catalog'
-import { getProps, isUnlocked } from '../device'
-import { downloadVerified } from '../download'
+import { getProps, getvar, isUnlocked } from '../device'
+import { downloadVerified, sha256File } from '../download'
 import { exec, tools } from '../exec'
+import { addFlash, backupImage, updateFlash } from '../history'
 import { adb, ensureFastboot, fastboot, OpError, REMOTE_DIR, requireSystem, type OpContext } from './common'
 import { patchScript } from './patch-script'
 
@@ -14,21 +15,21 @@ type Partition = 'boot' | 'init_boot'
 
 // ───────────── 工作目录 ─────────────
 
-function workDir(): string {
+export function workDir(): string {
   const dir = join(app.getPath('temp'), 'oneplus-toolbox', 'work')
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
   return dir
 }
 
-function outputDir(): string {
+export function outputDir(): string {
   const dir = join(app.getPath('documents'), '一加工具箱')
   mkdirSync(dir, { recursive: true })
   return dir
 }
 
 /** 在目录中递归查找指定文件名 */
-function findFile(dir: string, name: string): string | undefined {
+export function findFile(dir: string, name: string): string | undefined {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name)
     if (entry.isDirectory()) {
@@ -65,22 +66,35 @@ async function payloadTimestamp(rom: string, dir: string, ctx: OpContext): Promi
 }
 
 /**
- * 从 ROM 中取出 boot.img / init_boot.img。
+ * 从 ROM 中取出指定分区的镜像（默认 boot.img / init_boot.img）。
  * 1. 标准 OTA（payload.bin，本地 zip 或 URL）：先比对 ROM 的构建时间与手机 ro.build.date.utc，不一致则拒绝
  * 2. 镜像直接放在 zip 根目录（线刷包）：用 7-Zip 提取，无法校验版本，只给警告
+ *
+ * allowUnknown：读不到手机版本时（例如卡开机只能进 Fastboot）只给警告、不拒绝。版本明确不一致时始终拒绝
  */
-async function extractImages(rom: string, deviceTimestamp: string | undefined, dir: string, ctx: OpContext): Promise<void> {
+export async function extractImages(
+  rom: string,
+  deviceTimestamp: string | undefined,
+  dir: string,
+  ctx: OpContext,
+  allowUnknown = false,
+  partitions: string[] = ['boot', 'init_boot']
+): Promise<void> {
+  if (!partitions.every((p) => /^[a-z_]+$/.test(p))) throw new OpError('分区名不合法')
+  const names = partitions.join(' / ')
   const isUrl = /^https?:\/\//i.test(rom)
   ctx.step(isUrl ? '正在从链接读取 ROM 信息（只读取需要的部分）' : '正在读取 ROM 信息')
   const romTs = await payloadTimestamp(rom, dir, ctx)
   if (romTs) {
     ctx.log('info', `ROM 构建时间 = ${romTs}，手机 ro.build.date.utc = ${deviceTimestamp ?? '未知'}`)
-    if (!deviceTimestamp) throw new OpError('无法读取手机的系统版本信息，可能是连接不稳定')
-    if (romTs !== deviceTimestamp)
+    if (!deviceTimestamp) {
+      if (!allowUnknown) throw new OpError('无法读取手机的系统版本信息，可能是连接不稳定')
+      ctx.log('warn', '读不到手机的系统版本，无法校验 ROM 是否一致，按你的选择继续')
+    } else if (romTs !== deviceTimestamp)
       throw new OpError('ROM 与手机当前系统版本不一致，继续操作可能导致无法开机。为了安全，已停止操作')
-    ctx.log('ok', 'ROM 与手机系统版本一致')
-    ctx.step(isUrl ? '正在从链接提取镜像（只下载 boot / init_boot 所需的数据）' : '正在从 payload 中提取镜像')
-    const r = await exec(tools.payloadDumper, [rom, '-i', 'boot,init_boot', '-o', dir, '-q'], {
+    else ctx.log('ok', 'ROM 与手机系统版本一致')
+    ctx.step(isUrl ? `正在从链接提取镜像（只下载 ${names} 所需的数据）` : '正在从 payload 中提取镜像')
+    const r = await exec(tools.payloadDumper, [rom, '-i', partitions.join(','), '-o', dir, '-q'], {
       signal: ctx.signal,
       log: ctx.log,
       timeoutMs: 1_800_000
@@ -93,9 +107,9 @@ async function extractImages(rom: string, deviceTimestamp: string | undefined, d
 
   ctx.step('正在用 7-Zip 查找镜像')
   const list = await exec(tools.sevenZip, ['l', rom], { signal: ctx.signal, echoOutput: false, timeoutMs: 120_000 })
-  if (!/\s(init_)?boot\.img\r?$/m.test(list.stdout))
-    throw new OpError('这个文件既不是标准 OTA 包，也没有在根目录找到 boot.img / init_boot.img，请确认选择的是完整的全量包')
-  await exec(tools.sevenZip, ['x', rom, 'boot.img', 'init_boot.img', `-o${dir}`, '-y'], {
+  if (!new RegExp(String.raw`\s(${partitions.join('|')})\.img\r?$`, 'm').test(list.stdout))
+    throw new OpError(`这个文件既不是标准 OTA 包，也没有在根目录找到 ${partitions.map((p) => `${p}.img`).join(' / ')}，请确认选择的是完整的全量包`)
+  await exec(tools.sevenZip, ['x', rom, ...partitions.map((p) => `${p}.img`), `-o${dir}`, '-y'], {
     signal: ctx.signal,
     log: ctx.log,
     timeoutMs: 600_000
@@ -233,18 +247,43 @@ export async function root(opts: RootOptions, ctx: OpContext): Promise<Operation
     throw new OpError('Bootloader 未解锁，无法刷入。请先完成解锁（修补后的镜像已保存，可稍后手动刷入）')
   }
 
+  // 原厂的另一个分区一并刷回，清除之前装过的其它 Root
+  const other: Partition = partition === 'boot' ? 'init_boot' : 'boot'
+  const withOther = opts.flashOther && !!images[other]
+
+  // 刷之前记下操作，并把要覆盖的分区的原厂镜像备份好，卡开机时可以一键撤销
+  ctx.step('正在备份原厂镜像')
+  const build = { buildId: props['ro.build.display.id'], romVersion: props['ro.build.version.oplusrom'], buildDateUtc: props['ro.build.date.utc'] }
+  const backups: FlashRecord['backups'] = {}
+  for (const p of withOther ? [partition, other] : [partition]) backups[p] = await backupImage(fbSerial, build.buildDateUtc, p, images[p]!)
+  ctx.log('info', `原厂镜像已备份到 ${dirname(backups[partition].path)}`)
+  const rec = addFlash({
+    serial: fbSerial,
+    kind: 'root',
+    scheme: scheme.name,
+    slot: await getvar(fbSerial, 'current-slot', ctx.signal),
+    build,
+    partitions: [
+      { name: partition, source: 'patched', sha256: await sha256File(patched) },
+      ...(withOther ? [{ name: other, source: 'stock' as const, sha256: backups[other].sha256 }] : [])
+    ],
+    backups
+  })
+
   // 用临时目录里的副本刷入，避开「文档\一加工具箱」中文路径
   ctx.step(`正在刷入 ${partition}`)
   const flash = await fastboot(fbSerial, ['flash', partition, patched], ctx, 300_000)
-  if (flash.code !== 0) throw new OpError(`刷入 ${partition} 失败，设备仍在 Fastboot 模式，可尝试重刷或切换槽位`)
+  if (flash.code !== 0) {
+    updateFlash(fbSerial, rec.id, { status: 'failed' })
+    throw new OpError(`刷入 ${partition} 失败，设备仍在 Fastboot 模式，可尝试重刷或切换槽位`)
+  }
 
-  // 原厂的另一个分区一并刷回，清除之前装过的其它 Root
-  const other: Partition = partition === 'boot' ? 'init_boot' : 'boot'
-  if (opts.flashOther && images[other]) {
+  if (withOther) {
     ctx.step(`正在刷入原厂 ${other}`)
     const r = await fastboot(fbSerial, ['flash', other, images[other]!], ctx, 300_000)
     if (r.code !== 0) ctx.log('warn', `原厂 ${other} 刷入失败，不影响本次 Root`)
   }
+  updateFlash(fbSerial, rec.id, { status: 'ok' })
 
   await fastboot(fbSerial, ['reboot'], ctx)
   return { ok: true, message: `刷入完成，手机正在重启。${AFTER_ROOT[scheme.family]}`, outputPath: saved }

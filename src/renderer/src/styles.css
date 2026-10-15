@@ -381,6 +381,9 @@ nav {
 .action-grid.two {
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
 }
+.action-grid.three {
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+}
 .action-card {
   display: flex;
   flex-direction: column;
@@ -691,7 +694,8 @@ code {
   background: var(--ok-soft);
   color: var(--ok);
 }
-.mode-fastboot {
+.mode-fastboot,
+.mode-fastbootd {
   background: var(--info-soft);
   color: var(--info);
 }
@@ -708,7 +712,8 @@ code {
   animation: pulse 1.6s ease-in-out infinite;
 }
 .sidebar-device .mode-system .dot { color: var(--ok); }
-.sidebar-device .mode-fastboot .dot { color: var(--info); }
+.sidebar-device .mode-fastboot .dot,
+.sidebar-device .mode-fastbootd .dot { color: var(--info); }
 .sidebar-device .mode-recovery .dot,
 .sidebar-device .mode-unauthorized .dot { color: var(--warn); }
 .sidebar-device .mode-edl .dot { color: var(--danger); }
@@ -1389,4 +1394,300 @@ code {
 }
 .edl-note .muted {
   color: inherit;
+}
+
+/* ───────── 安装应用 ───────── */
+
+.install-card {
+  margin-bottom: 14px;
+}
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 16px;
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dropzone p {
+  margin: 0;
+}
+.dropzone.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.install-card .card-actions .muted {
+  flex: 1;
+}
+
+/* ───────── 救援页 ───────── */
+
+.rescue-notes {
+  margin-top: 14px;
+}
+.rescue-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+/* ───────────── 开机诊断 ───────────── */
+.diag-row {
+  margin-top: 14px;
+}
+.diag-state {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.diag-slots {
+  margin: 12px 0 6px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.diag-slots th,
+.diag-slots td {
+  padding: 5px 18px 5px 0;
+  text-align: left;
+}
+.diag-slots th {
+  color: var(--muted);
+  font-weight: 500;
+}
+.diag-slots tr.current td {
+  font-weight: 600;
+}
+.diag-crash summary {
+  cursor: pointer;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.diag-crash pre {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.diag-rom {
+  margin-bottom: 14px;
+}
+.findings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.finding {
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--muted);
+  background: var(--surface-2);
+}
+.finding.conf-high {
+  border-left-color: var(--danger);
+}
+.finding.conf-medium {
+  border-left-color: var(--warn);
+}
+.finding-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.finding-head .chip {
+  margin-top: 0;
+}
+.conf-chip-high {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: transparent;
+}
+.conf-chip-medium {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: transparent;
+}
+.finding-evidence {
+  margin: 8px 0 10px;
+  padding-left: 20px;
+}
+.finding-evidence li {
+  margin: 2px 0;
+}
+.finding-fixes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fix-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.fix-guide {
+  line-height: 1.6;
+}
+
+/* ───────────── 驱动诊断 ───────────── */
+.driver-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.driver-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.driver-list li:last-child {
+  border-bottom: 0;
+}
+.driver-list code {
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ───────────── 多设备选择 ───────────── */
+.device-picker {
+  margin-top: auto;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.device-picker + .sidebar-device {
+  margin-top: 0;
+}
+.device-picker select {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.update-pill + .device-picker {
+  margin-top: 0;
+}
+
+.apps-tabs {
+  margin-bottom: 14px;
+}
+.app-row .chip {
+  margin-top: 0;
+}
+
+/* ───────────── 文件传输 ───────────── */
+.files-card {
+  margin-top: 16px;
+}
+.files-body {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: 64px;
+}
+.files-body.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+.crumbs > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.file-browser {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 340px;
+  overflow: auto;
+}
+.fb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+button.fb-row {
+  cursor: pointer;
+}
+button.fb-row:not(:disabled):hover {
+  background: var(--surface-2);
+}
+.fb-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fb-empty {
+  padding: 8px 4px;
+}
+.crumbs .link-btn {
+  margin-top: 0;
+}
+
+/* ───────────── 无线调试 ───────────── */
+.wireless-card {
+  margin-top: 16px;
+}
+.text-input {
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+}
+.text-input:focus {
+  border-color: var(--accent);
+}
+.wireless-grid {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 12px;
+  max-width: 560px;
+}
+.wireless-grid .field-label {
+  margin-top: 0;
+}
+.wireless-inline {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
