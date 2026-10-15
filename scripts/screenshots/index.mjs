@@ -22,6 +22,7 @@ const SCENES = [
   { file: 'root-running', query: 'page=一键 Root&scene=root-running&logs=1' },
   { file: 'root-apatch', query: 'page=一键 Root&scene=apatch' },
   { file: 'bootloader', query: 'dev=fastboot&page=Bootloader&scene=unlock' },
+  { file: 'edl', query: 'dev=edl&page=9008 救砖&scene=edl' },
   { file: 'apps', query: 'page=应用双开&scene=apps' },
   { file: 'tools', query: 'page=系统工具' }
 ]

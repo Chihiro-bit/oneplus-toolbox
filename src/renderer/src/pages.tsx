@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   ArrowRight,
   Copy,
+  LifeBuoy,
   Lock,
   LockOpen,
   Power,
@@ -122,6 +123,7 @@ export function OverviewPage({ tb, go }: PageProps) {
         <Tile icon={<LockOpen size={20} />} title="解锁 Bootloader" desc="Root 的前置步骤" onClick={() => go('bootloader')} />
         <Tile icon={<Sparkles size={20} />} title="一键 Root" desc="Magisk / APatch / KernelSU 等 6 种方案" onClick={() => go('root')} />
         <Tile icon={<ArrowLeftRight size={20} />} title="A/B 槽位切换" desc="变砖时的自救手段" onClick={() => go('slot')} />
+        <Tile icon={<LifeBuoy size={20} />} title="9008 救砖" desc="高通 EDL 深刷（需自备散包）" onClick={() => go('edl')} />
         <Tile icon={<Copy size={20} />} title="应用双开" desc="把任意应用克隆到分身空间" onClick={() => go('apps')} />
         <Tile icon={<Wrench size={20} />} title="系统工具" desc="Play 商店、禁用系统更新" onClick={() => go('tools')} />
       </div>

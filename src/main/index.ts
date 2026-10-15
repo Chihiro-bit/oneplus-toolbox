@@ -106,6 +106,37 @@ ipcMain.handle('dialog:apk', async (_e, title: string) => {
   return r.canceled ? null : r.filePaths[0]
 })
 
+function extFilters(extensions: string[]): { name: string; extensions: string[] }[] {
+  if (extensions.length === 0) return []
+  return [
+    { name: extensions.map((e) => e.toUpperCase()).join(' / '), extensions },
+    { name: '所有文件', extensions: ['*'] }
+  ]
+}
+
+ipcMain.handle('dialog:file', async (_e, title: string, extensions: string[]) => {
+  const r = await dialog.showOpenDialog(win!, {
+    title,
+    properties: ['openFile'],
+    filters: extFilters(extensions)
+  })
+  return r.canceled ? null : r.filePaths[0]
+})
+
+ipcMain.handle('dialog:files', async (_e, title: string, extensions: string[]) => {
+  const r = await dialog.showOpenDialog(win!, {
+    title,
+    properties: ['openFile', 'multiSelections'],
+    filters: extFilters(extensions)
+  })
+  return r.canceled ? [] : r.filePaths
+})
+
+ipcMain.handle('dialog:dir', async (_e, title: string) => {
+  const r = await dialog.showOpenDialog(win!, { title, properties: ['openDirectory'] })
+  return r.canceled ? null : r.filePaths[0]
+})
+
 ipcMain.handle('catalog:get', (_e, refresh?: boolean) => getCatalog(refresh))
 ipcMain.handle('settings:get', () => loadSettings())
 ipcMain.handle('settings:set', async (_e, s: Settings) => {
@@ -140,6 +171,14 @@ function describeRequest(req: OperationRequest): string {
       return '安装 Play 商店'
     case 'otaUpdates':
       return req.disable ? '禁用系统更新' : '恢复系统更新'
+    case 'edlDetect':
+      return '查找 9008 设备'
+    case 'edlProbe':
+      return '9008 预检（只读）'
+    case 'edlFlash':
+      return req.profile.dryRunOnly ? '9008 预检（只读）' : '9008 刷写'
+    case 'edlReset':
+      return '退出 9008'
   }
 }
 
@@ -180,7 +219,7 @@ function createWindow(): void {
 
   win.webContents.once('did-finish-load', () => {
     const missing = missingTools()
-    if (missing.length) log('error', `缺少工具：${missing.join(', ')}。开发环境请先运行 npm run prepare-tools`)
+    if (missing.length) log('error', `缺少工具：${missing.join(', ')}。开发环境请先运行 npm run fetch-tools`)
   })
 }
 

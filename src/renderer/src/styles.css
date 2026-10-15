@@ -700,6 +700,10 @@ code {
   background: var(--warn-soft);
   color: var(--warn);
 }
+.mode-edl {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
 .mode-none .dot {
   animation: pulse 1.6s ease-in-out infinite;
 }
@@ -707,6 +711,7 @@ code {
 .sidebar-device .mode-fastboot .dot { color: var(--info); }
 .sidebar-device .mode-recovery .dot,
 .sidebar-device .mode-unauthorized .dot { color: var(--warn); }
+.sidebar-device .mode-edl .dot { color: var(--danger); }
 .sidebar-device .mode-none .dot { color: var(--muted); }
 
 @keyframes pulse {
@@ -1315,4 +1320,73 @@ code {
 }
 .modal-warning footer .btn {
   min-width: 220px;
+}
+
+/* ───────── 9008 救砖页 ───────── */
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+.file-list p {
+  margin: 2px 0 0;
+}
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.file-row .file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.file-row .chip {
+  margin-top: 0;
+}
+
+.edl-limits {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.edl-limits strong {
+  font-size: 13px;
+}
+.edl-limits ul {
+  margin: 8px 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.edl-limits li {
+  margin: 3px 0;
+}
+.edl-limits p {
+  margin: 0;
+}
+
+.edl-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.edl-note .muted {
+  color: inherit;
 }

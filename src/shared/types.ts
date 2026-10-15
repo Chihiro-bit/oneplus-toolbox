@@ -1,7 +1,7 @@
 // 主进程与渲染进程共用的类型
 
-/** none=未连接，system=开机(adb)，recovery=Recovery(adb)，fastboot=Fastboot，unauthorized=adb 未授权 */
-export type DeviceMode = 'none' | 'system' | 'recovery' | 'fastboot' | 'unauthorized'
+/** none=未连接，system=开机(adb)，recovery=Recovery(adb)，fastboot=Fastboot，unauthorized=adb 未授权，edl=高通 9008 深刷 */
+export type DeviceMode = 'none' | 'system' | 'recovery' | 'fastboot' | 'unauthorized' | 'edl'
 
 export interface DeviceInfo {
   mode: DeviceMode
@@ -18,6 +18,8 @@ export interface DeviceInfo {
   slot?: string
   /** 仅 fastboot 下可读 */
   unlocked?: boolean
+  /** 仅 edl 下可读：QDLoader 9008 占用的 COM 端口，如 COM5 */
+  edlPort?: string
 }
 
 export type RebootTarget = 'system' | 'recovery' | 'bootloader' | 'edl'
@@ -28,6 +30,56 @@ export type PatchTarget = 'auto' | 'boot' | 'init_boot'
 
 /** 修补方式：Magisk 系（含 Kitsune / Alpha）、APatch、KernelSU 系（含 Next / SukiSU） */
 export type RootFamily = 'magisk' | 'apatch' | 'ksu'
+
+// ───────────── 9008 救砖 ─────────────
+
+/** qdl 的目标存储类型 */
+export type EdlStorage = 'ufs' | 'emmc' | 'nand' | 'nvme' | 'spinor'
+
+/** 检测到的一台 9008 设备 */
+export interface EdlDevice {
+  /** 设备管理器里的 COM 端口，如 COM5 */
+  port: string
+  /** 设备名称，如「Qualcomm HS-USB QDLoader 9008」 */
+  name: string
+}
+
+/**
+ * 9008 刷写需要的一整套文件，全部由用户自备：
+ * 工具箱只做校验、排序、日志和风险提示，不打包也不下载这些文件。
+ */
+export interface EdlProfile {
+  /** 设备编程器（devprg*.mbn / prog_firehose_ddr.elf） */
+  programmer: string
+  /** 预签名 VIP 摘要表所在目录，留空表示设备不需要（未启用安全启动） */
+  vipDir?: string
+  /** rawprogram*.xml / patch*.xml */
+  xmls: string[]
+  /** 散包镜像所在目录（qdl --include） */
+  imagesDir: string
+  storage: EdlStorage
+  /** 保护 LUN5：跳过 rawprogram5 / patch5 */
+  protectLun5: boolean
+  /** 散包里缺少某些镜像时跳过而不中止（qdl --allow-missing） */
+  allowMissing: boolean
+  /** 刷完不重启，把设备留在 9008 */
+  skipReset: boolean
+  /** 只做预检（qdl --dry-run），不连设备、不刷写 */
+  dryRunOnly: boolean
+}
+
+/** 检测 / 自检的结果，回填到界面上 */
+export interface EdlState {
+  ports: EdlDevice[]
+  /** qdl list 的原始输出 */
+  qdlList?: string
+  /** qdl chipinfo 的原始输出（Sahara 只读） */
+  chipInfo?: string
+  /** Sahara 能否读到芯片信息 */
+  saharaOk: boolean
+  /** 传给 qdl 的最终参数，便于用户核对 */
+  command?: string
+}
 
 export interface RootScheme {
   id: string
@@ -96,6 +148,10 @@ export type OperationRequest =
   | { kind: 'cloneApp'; package: string; enable: boolean }
   | { kind: 'installPlay'; apk: string }
   | { kind: 'otaUpdates'; disable: boolean }
+  | { kind: 'edlDetect' }
+  | { kind: 'edlProbe'; profile: EdlProfile }
+  | { kind: 'edlFlash'; profile: EdlProfile }
+  | { kind: 'edlReset' }
 
 export type LogLevel = 'info' | 'cmd' | 'ok' | 'warn' | 'error' | 'step'
 
@@ -112,6 +168,8 @@ export interface OperationResult {
   outputPath?: string
   /** listApps 的结果 */
   apps?: AppEntry[]
+  /** 9008 检测 / 自检的结果 */
+  edl?: EdlState
 }
 
 export interface Settings {
@@ -140,6 +198,12 @@ export interface ToolboxApi {
   cancel(): Promise<void>
   pickRom(): Promise<string | null>
   pickApk(title: string): Promise<string | null>
+  /** 选单个文件；extensions 为空表示不过滤 */
+  pickFile(title: string, extensions: string[]): Promise<string | null>
+  /** 选多个文件 */
+  pickFiles(title: string, extensions: string[]): Promise<string[]>
+  /** 选目录，取消返回 null */
+  pickDir(title: string): Promise<string | null>
   getCatalog(refresh?: boolean): Promise<CatalogState>
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<Settings>

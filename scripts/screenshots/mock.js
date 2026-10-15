@@ -18,7 +18,26 @@
       romVersion: 'V16.0.0',
       slot: 'a'
     },
-    fastboot: { mode: 'fastboot', serial: '1a2b3c4d', model: 'OnePlus 13', brand: 'OnePlus', device: 'sun', slot: 'b', unlocked: true }
+    fastboot: { mode: 'fastboot', serial: '1a2b3c4d', model: 'OnePlus 13', brand: 'OnePlus', device: 'sun', slot: 'b', unlocked: true },
+    edl: {
+      mode: 'edl',
+      serial: 'COM5',
+      edlPort: 'COM5',
+      device: 'Qualcomm HS-USB QDLoader 9008 (COM5)'
+    }
+  }
+
+  const EDL_PORTS = [{ port: 'COM5', name: 'Qualcomm HS-USB QDLoader 9008 (COM5)' }]
+  const EDL_CHIP = [
+    'Sahara version   : 3',
+    'MSM HWID         : 0x600001 | model_id:0x0000 | oem_id:0x0051 OPPO',
+    'HW_ID            : 0060000100510000'
+  ].join('\n')
+  const EDL_FILES = {
+    programmer: 'D:\\EDL\\8Gen3\\devprg_firehose_ddr.mbn',
+    vipDir: 'D:\\EDL\\8Gen3\\vip',
+    imagesDir: 'D:\\EDL\\PJZ110_images',
+    xmls: ['D:\\EDL\\PJZ110_images\\rawprogram0.xml', 'D:\\EDL\\PJZ110_images\\patch0.xml']
   }
 
   const APPS = [
@@ -60,6 +79,7 @@
 
   const listeners = { log: [], step: [], icons: [] }
   const scene = q.get('scene') || ''
+  let dirPicks = 0
 
   window.toolbox = {
     getDevice: async () => DEVICES[q.get('dev') || 'system'],
@@ -80,12 +100,34 @@
           }, 30)
           return
         }
+        if (req.kind === 'edlDetect') {
+          setTimeout(
+            () => resolve({ ok: true, message: '已找到 1 台 9008 设备', edl: { ports: EDL_PORTS, qdlList: 'COM5', saharaOk: false } }),
+            30
+          )
+          return
+        }
+        if (req.kind === 'edlProbe') {
+          setTimeout(
+            () =>
+              resolve({
+                ok: true,
+                message: '预检通过：Sahara 正常，文件集与摘要表一致，可以开始刷写',
+                edl: { ports: EDL_PORTS, chipInfo: EDL_CHIP, saharaOk: true, command: `qdl --storage=ufs --vip-table-path=${EDL_FILES.vipDir} --include=${EDL_FILES.imagesDir} ${EDL_FILES.programmer} rawprogram0.xml patch0.xml` }
+              }),
+            30
+          )
+          return
+        }
         // 其它操作停在「进行中」，用于展示进度横幅
         setTimeout(() => listeners.step.forEach((cb) => cb('正在手机上修补 init_boot.img')), 20)
       }),
     cancel: async () => {},
     pickRom: async () => 'D:\\ROM\\PJZ110_16.0.0.300.zip',
     pickApk: async () => null,
+    pickFile: async () => EDL_FILES.programmer,
+    pickFiles: async () => EDL_FILES.xmls,
+    pickDir: async () => (dirPicks++ === 0 ? EDL_FILES.vipDir : EDL_FILES.imagesDir),
     getCatalog: async () => (await import('/catalog.js')).default,
     getSettings: async () => ({ catalogUrl: '', updateRepo: 'example/oneplus-toolbox' }),
     setSettings: async (s) => s,
@@ -129,5 +171,16 @@
     }
     if (scene === 'apps') click('button', '读取应用列表')
     if (scene === 'unlock') click('button', '开始解锁')
+    if (scene === 'edl') {
+      click('button', '检测设备')
+      await wait(120)
+      for (const b of [...document.querySelectorAll('button')].filter((el) => el.textContent.includes('浏览…'))) {
+        b.click()
+        await wait(60)
+      }
+      click('button', '选择 XML')
+      await wait(120)
+      document.querySelector('.content').scrollTop = 420
+    }
   })
 })()

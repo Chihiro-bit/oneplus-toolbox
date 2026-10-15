@@ -3,6 +3,7 @@ import { cloneApp, installPlay, listApps, otaUpdates } from './apps'
 export { loadIcons } from './apps'
 import { reboot, setLock, switchSlot } from './basic'
 import { OpError, type OpContext } from './common'
+import { edlDetect, edlFlash, edlProbe, edlReset } from './edl'
 import { root } from './root'
 
 export type { OpContext }
@@ -27,6 +28,14 @@ export async function runOperation(req: OperationRequest, ctx: OpContext): Promi
       return installPlay(req.apk, ctx)
     case 'otaUpdates':
       return otaUpdates(req.disable, ctx)
+    case 'edlDetect':
+      return edlDetect(ctx)
+    case 'edlProbe':
+      return edlProbe(req.profile, ctx)
+    case 'edlFlash':
+      return edlFlash(req.profile, ctx)
+    case 'edlReset':
+      return edlReset(ctx)
   }
 }
 

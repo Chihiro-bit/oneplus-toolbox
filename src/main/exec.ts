@@ -19,7 +19,9 @@ export const tools = {
   get payloadDumper() { return join(binDir(), 'payload_dumper.exe') },
   get magiskApk() { return join(binDir(), 'magisk.apk') },
   /** Android 端的 aapt2，推到手机上读取应用名 */
-  get aapt2() { return join(binDir(), 'aapt2') }
+  get aapt2() { return join(binDir(), 'aapt2') },
+  /** 高通 9008 / EDL 刷写工具，随附的 DLL 必须与它同目录 */
+  get qdl() { return join(binDir(), 'qdl', 'qdl.exe') }
 }
 
 export function missingTools(): string[] {

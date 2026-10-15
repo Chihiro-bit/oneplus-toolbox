@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeftRight, ArrowUpCircle, Copy, Cpu, Home, LockKeyhole, Power, Settings, Smartphone, Sparkles, Wrench } from 'lucide-react'
+import { ArrowLeftRight, ArrowUpCircle, Copy, Cpu, Home, LifeBuoy, LockKeyhole, Power, Settings, Smartphone, Sparkles, Wrench } from 'lucide-react'
 import type { UpdateInfo } from '@shared/types'
 import { AppsPage } from './apps'
+import { EdlPage } from './edl'
 import { BootloaderPage, OverviewPage, RebootPage, SlotPage } from './pages'
 import { RootPage } from './root'
 import { SettingsPage } from './settings'
@@ -9,7 +10,7 @@ import { isOnePlus, MODE_LABEL, useToolbox } from './state'
 import { ToolsPage } from './tools'
 import { BrandWarning, ConfirmDialog, LogPanel, ModeBadge, RunBanner, type ConfirmSpec } from './ui'
 
-export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'slot' | 'apps' | 'tools' | 'settings'
+export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'slot' | 'edl' | 'apps' | 'tools' | 'settings'
 
 const NAV: { id: PageId; label: string; icon: typeof Home }[] = [
   { id: 'overview', label: '概览', icon: Home },
@@ -17,6 +18,7 @@ const NAV: { id: PageId; label: string; icon: typeof Home }[] = [
   { id: 'bootloader', label: 'Bootloader', icon: LockKeyhole },
   { id: 'root', label: '一键 Root', icon: Sparkles },
   { id: 'slot', label: 'A/B 槽位', icon: ArrowLeftRight },
+  { id: 'edl', label: '9008 救砖', icon: LifeBuoy },
   { id: 'apps', label: '应用双开', icon: Copy },
   { id: 'tools', label: '系统工具', icon: Wrench }
 ]
@@ -84,6 +86,7 @@ export default function App() {
           {page === 'bootloader' && <BootloaderPage {...props} />}
           {page === 'root' && <RootPage {...props} />}
           {page === 'slot' && <SlotPage {...props} />}
+          {page === 'edl' && <EdlPage {...props} />}
           {page === 'apps' && <AppsPage {...props} />}
           {page === 'tools' && <ToolsPage {...props} />}
           {page === 'settings' && <SettingsPage {...props} />}
