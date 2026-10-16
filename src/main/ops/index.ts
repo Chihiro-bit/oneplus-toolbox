@@ -2,6 +2,7 @@ import { FEATURES } from '@shared/features'
 import type { OperationRequest, OperationResult } from '@shared/types'
 import { cloneApp, debloat, freezeApp, installPlay, listApps, listSystemApps, listUserApps, otaUpdates } from './apps'
 import { appPermissions, grantPermission } from './permissions'
+import { backupApp, restoreApp } from './appbackup'
 export { loadIcons } from './apps'
 import { reboot, setLock, switchSlot } from './basic'
 import { backupPartitions } from './backup'
@@ -14,6 +15,8 @@ import { OpError, type OpContext } from './common'
 import { exportDiagnostics } from './diagnostics'
 import { edlDetect, edlFlash, edlProbe, edlReset } from './edl'
 import { installApps } from './install'
+import { installModules } from './modules'
+import { network } from './network'
 import { modules, restoreStock, undoFlash, unroot } from './rescue'
 import { root } from './root'
 import { shizuku } from './shizuku'
@@ -87,6 +90,14 @@ export async function runOperation(req: OperationRequest, ctx: OpContext): Promi
       return appPermissions(req.package, ctx)
     case 'grantPermission':
       return grantPermission(req.package, req.permission, req.grant, ctx)
+    case 'network':
+      return network(req.request, ctx)
+    case 'backupApp':
+      return backupApp(req.package, req.label, req.withData, ctx)
+    case 'restoreApp':
+      return restoreApp(req.dir, ctx)
+    case 'installModules':
+      return installModules(req.files, ctx)
     case 'edlDetect':
       return edlDetect(ctx)
     case 'edlProbe':

@@ -108,6 +108,16 @@
 - [x] **冻结应用 / adb 授权**（「应用管理 → 冻结与权限」）：`pm disable-user` / `pm enable`，当前桌面和输入法不允许冻结；从 `dumpsys package` 读应用申请了哪些 development 权限（`shared/permissions.ts`），一键 `pm grant` / `revoke`
   - [ ] App Ops 管理（`appops set`）、常用系统设置开关（动画速度、刷新率等）
 - [x] **无线调试配对**（「系统工具 → 无线调试」）：`adb pair` / `adb connect` / `adb disconnect`，以及插线时一键 `adb tcpip 5555` 切到无线
+- [x] **独立屏幕投屏**（`ops/media.ts` 的 `mirrorArgs`，「投屏与截图 → 独立屏幕」）：scrcpy `--new-display` 建虚拟屏，可选启动的应用（`--start-app`）、分辨率、声音留在手机（`--no-audio`）、关窗后应用移回手机（`--no-vd-destroy-content`）；软键盘弹在虚拟屏上（`--display-ime-policy=local`）
+  - 2026-10-16 一加 13（ColorOS 16 / Android 16）实测：不指定应用时显示系统副屏桌面（`SecondaryDisplayLauncher`）；后台应用会被移到虚拟屏，手机屏幕不受影响；手机锁屏后虚拟屏照常运行；`--no-vd-destroy-content` 关窗后应用会跳到手机前台，所以默认不勾；默认关窗时任务被关掉、进程还在
+  - [ ] 真机验证：在虚拟屏上点输入框，软键盘是否弹在虚拟屏上；声音转到电脑时手机是否静音
+- [x] **联网修复与私人 DNS**（`ops/network.ts`，「系统工具」）：`captive_portal_*` 改成 google.cn / 小米的 generate_204，可恢复默认；`private_dns_mode` / `private_dns_specifier` 切换，主机名在 `shared/network.ts` 校验
+  - [ ] 真机验证：氧 OS / ColorOS 上改完重连 Wi-Fi 感叹号是否消失（ColorOS 可能本来就用自己的检测地址）
+- [x] **应用备份与恢复**（`ops/appbackup.ts`，「应用管理 → 备份与恢复」）：`pm path` 拉回安装包，有分包时打成 `.apks`；已 Root 时 `su` 打包 `/data/data` 和 `/data/user_de/0` 下的应用目录（不含 cache / code_cache / lib），存到「文档\一加工具箱\应用备份\」并写 backup.json。恢复：先装安装包，再解压数据、`chown` 成新 uid、`restorecon`；解压前 `tar -tzf` 检查每一项都在该应用目录下
+  - [ ] 真机验证（需要 Root）：toybox tar 的 `--exclude` 是否按路径匹配；恢复后 SELinux 标签是否正确、应用能否正常打开；换机恢复
+  - [ ] `Android/data/<包名>` 外部数据（游戏数据包等）还没备份
+- [x] **安装 Root 模块**（`ops/modules.ts`，「系统工具」）：先用 7z 确认 zip 根目录有 module.prop，推到手机后在 su 里按 ksud → apd → magisk 的顺序找安装命令
+  - [ ] 真机验证：三种 Root 方案各装一次
 - [ ] **国际化**：把界面文字抽出来，加英文界面（暂不做：要改动几乎所有界面和主进程提示文字，等功能稳定后一次做完更划算）
 - [ ] **全量包查找**：按机型 + 版本给出对应的 OTA 下载链接，数据放在远程目录里，下载后坚持 sha256 校验（缺数据：需要先整理可信的链接和哈希）
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseStat, remotePath } from '../src/main/ops/media'
+import { mirrorArgs, parseStat, remotePath } from '../src/main/ops/media'
 
 describe('remotePath', () => {
   it('规范化', () => {
@@ -19,4 +19,31 @@ describe('parseStat', () => {
     ])
   })
   it('文件名里有 |', () => expect(parseStat('regular file|1|1|/sdcard/a|b.txt')[0].name).toBe('a|b.txt'))
+})
+
+describe('mirrorArgs', () => {
+  const base = { turnScreenOff: false, stayAwake: true }
+  it('镜像手机屏幕', () => {
+    expect(mirrorArgs({ ...base, turnScreenOff: true }, 'PJZ110')).toEqual(['--window-title', 'PJZ110', '--turn-screen-off', '--stay-awake'])
+  })
+  it('独立屏幕：指定应用和分辨率，不保持亮屏', () => {
+    const args = mirrorArgs({ ...base, display: { app: 'tv.danmaku.bili', size: '1920x1080', keepApp: true, audioOnPhone: true } }, 'PJZ110')
+    expect(args).toEqual([
+      '--window-title',
+      'PJZ110（独立屏幕）',
+      '--new-display=1920x1080/240',
+      '--display-ime-policy=local',
+      '--start-app=tv.danmaku.bili',
+      '--no-vd-destroy-content',
+      '--no-audio'
+    ])
+  })
+  it('独立屏幕：不指定应用时只开副屏桌面', () => {
+    const args = mirrorArgs({ ...base, display: { size: 'auto', keepApp: false, audioOnPhone: false } }, 'x')
+    expect(args).toContain('--new-display')
+    expect(args.some((a) => a.startsWith('--start-app'))).toBe(false)
+  })
+  it('拒绝不合法的包名', () => {
+    expect(() => mirrorArgs({ ...base, display: { app: 'a; reboot', size: 'auto', keepApp: false, audioOnPhone: false } }, 'x')).toThrow()
+  })
 })

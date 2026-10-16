@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
-import type { DeviceInfo, LogEntry, LogLevel, OperationRequest, OperationResult, Settings } from '@shared/types'
+import type { DeviceInfo, LogEntry, LogLevel, MirrorOptions, OperationRequest, OperationResult, Settings } from '@shared/types'
 import { getCatalog } from './catalog'
 import { describe, detect, selectDevice } from './device'
 import { CancelledError, missingTools, tools } from './exec'
@@ -160,7 +160,7 @@ ipcMain.handle('shell:openExternal', (_e, url: string) => {
   if (/^https?:\/\//.test(url)) return shell.openExternal(url)
 })
 ipcMain.handle('shell:openLogDir', () => shell.openPath(logDir()))
-ipcMain.handle('mirror:start', (_e, opts: { turnScreenOff: boolean; stayAwake: boolean }) => startMirror(opts, log))
+ipcMain.handle('mirror:start', (_e, opts: MirrorOptions) => startMirror(opts, log))
 ipcMain.handle('history:get', (_e, serial: string) => history(serial))
 
 function describeRequest(req: OperationRequest): string {
@@ -227,6 +227,18 @@ function describeRequest(req: OperationRequest): string {
       return `读取 ${req.package} 的权限`
     case 'grantPermission':
       return `${req.grant ? '授予' : '撤销'} ${req.package} 的 ${req.permission}`
+    case 'network':
+      return {
+        status: '读取网络设置',
+        captive: req.request.action === 'captive' && req.request.fix ? '修复联网检测' : '恢复默认联网检测',
+        dns: `设置私人 DNS（${req.request.action === 'dns' ? req.request.mode : ''}）`
+      }[req.request.action]
+    case 'backupApp':
+      return `备份 ${req.package}${req.withData ? '（含数据）' : ''}`
+    case 'restoreApp':
+      return `从 ${req.dir} 恢复应用`
+    case 'installModules':
+      return `安装模块（${req.files.length} 个文件）`
     case 'edlDetect':
       return '查找 9008 设备'
     case 'edlProbe':

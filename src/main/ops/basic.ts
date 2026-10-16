@@ -1,3 +1,4 @@
+import { isRooted } from '@shared/root'
 import type { OperationResult, RebootTarget } from '@shared/types'
 import { describe, getvar, isUnlocked, rootStatus } from '../device'
 import { lastFlash } from '../history'
@@ -52,7 +53,7 @@ async function checkStockBeforeLock(ctx: OpContext): Promise<void> {
   const d = await requireDevice(ctx)
   if (d.mode === 'system') {
     const root = await rootStatus(d.serial, ctx.signal)
-    if (root && root !== '未 Root' && !root.startsWith('未检测到'))
+    if (isRooted(root))
       throw new OpError(`手机当前是 ${root}，镜像被修改过，上锁后会无法开机。请先在「救援与恢复」里刷回原厂镜像再上锁`)
   }
   const last = lastFlash(d.serial)

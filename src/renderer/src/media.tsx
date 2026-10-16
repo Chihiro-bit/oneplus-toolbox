@@ -1,6 +1,6 @@
 import { useState, type DragEvent } from 'react'
 import { Camera, ChevronRight, Download, File, Folder, FolderUp, MonitorSmartphone, RefreshCw, Upload } from 'lucide-react'
-import type { RemoteEntry, WirelessRequest } from '@shared/types'
+import { DISPLAY_SIZES, type AppEntry, type DisplaySize, type RemoteEntry, type WirelessRequest } from '@shared/types'
 import type { Toolbox } from './state'
 import { Card } from './ui'
 
@@ -16,11 +16,31 @@ function size(n: number): string {
 // ───────────── 投屏与截图 ─────────────
 
 export function MirrorCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolean; reason?: string } }) {
+  const [separate, setSeparate] = useState(false)
   const [turnScreenOff, setTurnScreenOff] = useState(false)
   const [stayAwake, setStayAwake] = useState(true)
+  const [apps, setApps] = useState<AppEntry[] | null>(null)
+  const [app, setApp] = useState('')
+  const [size, setSize] = useState<DisplaySize>('1920x1080')
+  const [keepApp, setKeepApp] = useState(false)
+  const [audioOnPhone, setAudioOnPhone] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   // 投屏不占用操作队列，有操作在进行时也可以打开
   const mirrorBlocked = tb.device.mode !== 'system' ? '需要手机开机并开启 USB 调试' : tb.device.needsPick ? '请先在左下角选择要操作的设备' : undefined
+
+  const loadApps = async () => {
+    const r = await tb.start('读取应用列表', { kind: 'listUserApps' })
+    if (r.ok && r.apps) setApps(r.apps.filter((a) => !a.disabled))
+  }
+
+  const start = async () => {
+    const r = await window.toolbox.startMirror({
+      turnScreenOff,
+      stayAwake,
+      display: separate ? { app: app || undefined, size, keepApp, audioOnPhone } : undefined
+    })
+    setMsg({ ok: r.ok, text: r.message })
+  }
 
   return (
     <Card className="action-card">
@@ -28,26 +48,67 @@ export function MirrorCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolea
         <MonitorSmartphone size={20} />
       </div>
       <h3>投屏与截图</h3>
-      <p className="muted">用 scrcpy 把手机画面投到电脑上，可以用鼠标键盘直接操作，拖文件进窗口就能发送到手机。</p>
-      <label className="check">
-        <input type="checkbox" checked={stayAwake} onChange={(e) => setStayAwake(e.target.checked)} />
-        <span>投屏期间手机保持亮屏</span>
-      </label>
-      <label className="check">
-        <input type="checkbox" checked={turnScreenOff} onChange={(e) => setTurnScreenOff(e.target.checked)} />
-        <span>关闭手机屏幕（只在电脑上显示，更省电）</span>
-      </label>
+      <div className="segmented">
+        <button className={!separate ? 'on' : ''} onClick={() => setSeparate(false)}>
+          镜像手机屏幕
+        </button>
+        <button className={separate ? 'on' : ''} onClick={() => setSeparate(true)}>
+          独立屏幕
+        </button>
+      </div>
+      {!separate ? (
+        <>
+          <p className="muted">用 scrcpy 把手机画面投到电脑上，可以用鼠标键盘直接操作，拖文件进窗口就能发送到手机。</p>
+          <label className="check">
+            <input type="checkbox" checked={stayAwake} onChange={(e) => setStayAwake(e.target.checked)} />
+            <span>投屏期间手机保持亮屏</span>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={turnScreenOff} onChange={(e) => setTurnScreenOff(e.target.checked)} />
+            <span>关闭手机屏幕（只在电脑上显示，更省电）</span>
+          </label>
+        </>
+      ) : (
+        <>
+          <p className="muted">
+            在手机上新建一块虚拟屏幕投到电脑上：电脑上用一个应用，手机上照常用别的，互不影响，手机锁屏后电脑上也能继续用。
+            同一个应用不能同时在两边打开；银行、支付类应用在电脑上会黑屏。
+          </p>
+          <div className="mirror-row">
+            <select value={app} onChange={(e) => setApp(e.target.value)} aria-label="在电脑上打开的应用">
+              <option value="">副屏桌面（在电脑上自己选应用）</option>
+              {apps?.map((a) => (
+                <option key={a.package} value={a.package}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+            <button className="btn btn-ghost" disabled={gate.disabled} title={gate.reason} onClick={loadApps}>
+              <RefreshCw size={14} /> {apps ? '刷新' : '读取应用'}
+            </button>
+          </div>
+          <div className="mirror-row">
+            <select value={size} onChange={(e) => setSize(e.target.value as DisplaySize)} aria-label="分辨率">
+              {Object.entries(DISPLAY_SIZES).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={audioOnPhone} onChange={(e) => setAudioOnPhone(e.target.checked)} />
+            <span>声音留在手机上（不勾时所有应用的声音都转到电脑）</span>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={keepApp} onChange={(e) => setKeepApp(e.target.checked)} />
+            <span>关掉窗口后把应用移回手机（会跳到手机屏幕前台）</span>
+          </label>
+        </>
+      )}
       <div className="btn-row">
-        <button
-          className="btn btn-primary"
-          disabled={!!mirrorBlocked}
-          title={mirrorBlocked}
-          onClick={async () => {
-            const r = await window.toolbox.startMirror({ turnScreenOff, stayAwake })
-            setMsg({ ok: r.ok, text: r.message })
-          }}
-        >
-          <MonitorSmartphone size={15} /> 开始投屏
+        <button className="btn btn-primary" disabled={!!mirrorBlocked} title={mirrorBlocked} onClick={start}>
+          <MonitorSmartphone size={15} /> {separate ? '打开独立屏幕' : '开始投屏'}
         </button>
         <button className="btn btn-secondary" disabled={gate.disabled} title={gate.reason} onClick={() => tb.start('截图', { kind: 'screenshot' })}>
           <Camera size={15} /> 截图

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import type { LogLevel, OperationResult, RemoteEntry } from '@shared/types'
+import { DISPLAY_SIZES, type LogLevel, type MirrorOptions, type OperationResult, type RemoteEntry } from '@shared/types'
 import { detect } from '../device'
 import { tools } from '../exec'
 import { adb, OpError, REMOTE_DIR, requireSystem, shq, type OpContext } from './common'
@@ -117,11 +117,35 @@ export async function pullFile(path: string, ctx: OpContext): Promise<OperationR
 let mirror: ReturnType<typeof spawn> | null = null
 
 /**
+ * scrcpy 参数。独立屏幕用 --new-display 在手机上建一块虚拟屏幕（Android 10+），
+ * 一加 13（ColorOS 16）上实测：不指定应用时显示系统的副屏桌面；指定的应用已在后台时会被移到虚拟屏，
+ * 手机屏幕不受影响；手机锁屏后虚拟屏照常运行
+ */
+export function mirrorArgs(opts: MirrorOptions, title: string): string[] {
+  const vd = opts.display
+  if (!vd) {
+    const args = ['--window-title', title]
+    if (opts.turnScreenOff) args.push('--turn-screen-off')
+    if (opts.stayAwake) args.push('--stay-awake')
+    return args
+  }
+  if (vd.app !== undefined && !/^[\w.]+$/.test(vd.app)) throw new OpError('包名不合法')
+  const size = DISPLAY_SIZES[vd.size]
+  if (!size) throw new OpError('分辨率不合法')
+  // 软键盘弹在虚拟屏上，不打扰手机屏幕；手机屏幕要留给用户用，不关屏也不保持亮屏（锁屏不影响虚拟屏）
+  const args = ['--window-title', `${title}（独立屏幕）`, size.arg ? `--new-display=${size.arg}` : '--new-display', '--display-ime-policy=local']
+  if (vd.app) args.push(`--start-app=${vd.app}`)
+  if (vd.keepApp) args.push('--no-vd-destroy-content')
+  if (vd.audioOnPhone) args.push('--no-audio')
+  return args
+}
+
+/**
  * 启动 scrcpy 投屏。独立于操作队列运行（投屏期间可以照常做别的事），关掉窗口即结束。
  * ADB 环境变量指向工具箱自己的 adb，scrcpy 就不会再起一个不同版本的 adb server
  */
 export async function startMirror(
-  opts: { turnScreenOff: boolean; stayAwake: boolean },
+  opts: MirrorOptions,
   log: (level: LogLevel, text: string) => void
 ): Promise<OperationResult> {
   if (mirror && mirror.exitCode === null) return { ok: false, message: '投屏窗口已经打开了' }
@@ -129,9 +153,12 @@ export async function startMirror(
   if (d.mode !== 'system' || !d.serial) return { ok: false, message: '投屏需要手机开机并开启 USB 调试' }
   if (d.needsPick) return { ok: false, message: '连接了多台设备，请先在左下角选择要操作的那一台' }
   if (!existsSync(tools.scrcpy)) return { ok: false, message: '缺少 scrcpy，开发环境请先运行 npm run fetch-tools' }
-  const args = ['-s', d.serial, '--window-title', d.model ?? d.serial]
-  if (opts.turnScreenOff) args.push('--turn-screen-off')
-  if (opts.stayAwake) args.push('--stay-awake')
+  let args: string[]
+  try {
+    args = ['-s', d.serial, ...mirrorArgs(opts, d.model ?? d.serial)]
+  } catch (e) {
+    return { ok: false, message: (e as Error).message }
+  }
   log('cmd', `scrcpy ${args.join(' ')}`)
   const child = spawn(tools.scrcpy, args, { windowsHide: true, env: { ...process.env, ADB: tools.adb } })
   mirror = child
@@ -145,7 +172,12 @@ export async function startMirror(
     if (mirror === child) mirror = null
   })
   child.on('error', (e) => log('error', `scrcpy 启动失败：${e.message}`))
-  return { ok: true, message: '投屏窗口正在打开，关掉窗口即结束投屏' }
+  return {
+    ok: true,
+    message: opts.display
+      ? `独立屏幕正在打开${opts.display.app ? '' : '，在窗口里点右下角的图标选择应用'}。关掉窗口即结束${opts.display.keepApp ? '，应用会移回手机' : '，上面的应用会被关闭'}`
+      : '投屏窗口正在打开，关掉窗口即结束投屏'
+  }
 }
 
 export function stopMirror(): void {

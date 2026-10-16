@@ -1,3 +1,4 @@
+import { isRooted } from './root'
 import type { BootState, BootSymptom, FlashRecord, LastAction } from './types'
 
 /**
@@ -108,7 +109,7 @@ export function diagnose(input: DiagnoseInput): Finding[] {
   }
 
   // ── 模块导致卡开机 ──
-  const rooted = !!st.root && st.root !== '未 Root' && !st.root.startsWith('未检测到')
+  const rooted = isRooted(st.root)
   if (lastAction === 'module' || (st.adbDuringBoot && rooted && !rootRecent && (has('logo') || has('bootloop')))) {
     const evidence: string[] = []
     if (lastAction === 'module') evidence.push('出问题前最后一次操作是安装或更新模块')

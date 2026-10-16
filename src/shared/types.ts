@@ -1,5 +1,7 @@
 // 主进程与渲染进程共用的类型
 
+import type { NetworkRequest, NetworkState } from './network'
+
 /**
  * none=未连接，system=开机(adb)，recovery=Recovery(adb)，fastboot=Bootloader 里的 Fastboot，
  * fastbootd=用户空间 Fastboot（刷逻辑分区、取消未合并的更新时用），unauthorized=adb 未授权，edl=高通 9008 深刷
@@ -187,6 +189,32 @@ export interface RemoteEntry {
   mtime: number
 }
 
+/** 独立屏幕（虚拟显示器）的分辨率：auto=跟随手机屏幕 */
+export type DisplaySize = 'auto' | '1920x1080' | '1280x720'
+
+export const DISPLAY_SIZES: Record<DisplaySize, { label: string; arg?: string }> = {
+  auto: { label: '跟随手机屏幕' },
+  '1920x1080': { label: '1080p 横屏', arg: '1920x1080/240' },
+  '1280x720': { label: '720p 横屏（更流畅）', arg: '1280x720/160' }
+}
+
+export interface MirrorOptions {
+  turnScreenOff: boolean
+  stayAwake: boolean
+  /**
+   * 投到手机上新建的虚拟屏幕，而不是镜像手机屏幕：电脑上和手机上各用各的应用。
+   * app 为空时显示系统的副屏桌面
+   */
+  display?: {
+    app?: string
+    size: DisplaySize
+    /** 关掉窗口后把应用移回手机屏幕（会跳到手机前台）；否则关掉 */
+    keepApp: boolean
+    /** 声音留在手机上；否则转到电脑 */
+    audioOnPhone: boolean
+  }
+}
+
 export type WirelessRequest =
   | { action: 'pair'; host: string; port: string; code: string }
   | { action: 'connect'; host: string; port: string }
@@ -296,6 +324,20 @@ export interface AppPermission {
   granted: boolean
 }
 
+/** 应用备份目录里的 backup.json */
+export interface AppBackupManifest {
+  package: string
+  label: string
+  versionName?: string
+  versionCode?: string
+  /** 安装包文件名：单个 APK 是 app.apk，有分包时打成 app.apks */
+  apk: string
+  /** 应用数据的压缩包（需要 Root）：data.tgz 是 /data/data，data_de.tgz 是 /data/user_de/0 */
+  data: string[]
+  time: number
+  model?: string
+}
+
 export type OperationRequest =
   | { kind: 'reboot'; target: RebootTarget }
   | { kind: 'unlock' }
@@ -328,6 +370,10 @@ export type OperationRequest =
   | { kind: 'freezeApp'; package: string; freeze: boolean }
   | { kind: 'appPermissions'; package: string }
   | { kind: 'grantPermission'; package: string; permission: string; grant: boolean }
+  | { kind: 'network'; request: NetworkRequest }
+  | { kind: 'backupApp'; package: string; label: string; withData: boolean }
+  | { kind: 'restoreApp'; dir: string }
+  | { kind: 'installModules'; files: string[] }
   | { kind: 'edlDetect' }
   | { kind: 'edlProbe'; profile: EdlProfile }
   | { kind: 'edlFlash'; profile: EdlProfile }
@@ -360,6 +406,8 @@ export interface OperationResult {
   shizuku?: ShizukuState
   /** appPermissions / grantPermission 的结果 */
   permissions?: AppPermission[]
+  /** network 的结果 */
+  network?: NetworkState
 }
 
 export interface Settings {
@@ -410,7 +458,7 @@ export interface ToolboxApi {
   openPath(p: string): Promise<void>
   openExternal(url: string): Promise<void>
   /** 打开 scrcpy 投屏窗口（不占用操作队列） */
-  startMirror(opts: { turnScreenOff: boolean; stayAwake: boolean }): Promise<OperationResult>
+  startMirror(opts: MirrorOptions): Promise<OperationResult>
   /** 这台设备的刷写记录（旧的在前） */
   getHistory(serial: string): Promise<FlashRecord[]>
   /** 打开日志文件夹 */

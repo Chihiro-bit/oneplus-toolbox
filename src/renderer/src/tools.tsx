@@ -1,6 +1,8 @@
 import { useState, type DragEvent, type ReactNode } from 'react'
-import { BellOff, BellRing, Check, FileUp, Package, PackagePlus, Power, RefreshCw, ShoppingBag, X, Zap } from 'lucide-react'
+import { BellOff, BellRing, Blocks, Check, FileUp, Globe, Package, PackagePlus, Power, RefreshCw, ShoppingBag, Wifi, X, Zap } from 'lucide-react'
 import { SHIZUKU } from '@shared/catalog'
+import { DNS_PRESETS, validDnsHost, type NetworkRequest, type NetworkState, type PrivateDnsMode } from '@shared/network'
+import { isRooted } from '@shared/root'
 import type { ShizukuAction, ShizukuState } from '@shared/types'
 import { FilesCard, MirrorCard, WirelessCard } from './media'
 import { PageHeader, useGate, type PageProps } from './pages'
@@ -40,7 +42,7 @@ export function ToolsPage({ tb, confirm }: PageProps) {
 
   return (
     <>
-      <PageHeader title="系统工具" desc="安装应用、投屏截图、文件传输和免 Root 的常用调整，需要手机开机并开启 USB 调试" />
+      <PageHeader title="系统工具" desc="安装应用和 Root 模块、投屏截图、文件传输、联网修复等常用调整，需要手机开机并开启 USB 调试" />
 
       <Card className="install-card">
         <div className="card-head">
@@ -111,6 +113,8 @@ export function ToolsPage({ tb, confirm }: PageProps) {
       <div className="action-grid two">
         <MirrorCard tb={tb} gate={gate} />
         <ShizukuCard tb={tb} gate={gate} />
+        <NetworkCard tb={tb} gate={gate} />
+        <ModuleCard tb={tb} gate={gate} />
         <Card className="action-card">
           <div className="action-icon accent">
             <ShoppingBag size={20} />
@@ -247,6 +251,134 @@ function ShizukuCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolean; rea
           </li>
         </ul>
       )}
+    </Card>
+  )
+}
+
+const DNS_MODE_LABEL: Record<PrivateDnsMode, string> = { off: '已关闭', opportunistic: '自动', hostname: '指定服务器' }
+
+function NetworkCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolean; reason?: string } }) {
+  const [state, setState] = useState<NetworkState | null>(null)
+  const [host, setHost] = useState(DNS_PRESETS[0].host)
+  const run = async (title: string, request: NetworkRequest) => {
+    const r = await tb.start(title, { kind: 'network', request })
+    if (r.network) setState(r.network)
+  }
+  const hostOk = validDnsHost(host.trim())
+
+  return (
+    <Card className="action-card">
+      <div className="action-icon accent">
+        <Wifi size={20} />
+      </div>
+      <h3>
+        联网修复与私人 DNS{' '}
+        {state && <span className={`chip ${state.captive === 'cn' ? 'chip-ok' : ''}`}>{state.captive === 'cn' ? '检测地址已修复' : state.captive === 'custom' ? '检测地址已自定义' : '默认检测地址'}</span>}
+      </h3>
+      <p className="muted">
+        Wi-Fi 显示感叹号、提示「已连接但无法访问互联网」，通常是系统的联网检测访问不到 Google。改成国内地址后重连 Wi-Fi 即可，不需要 Root。
+      </p>
+      <div className="btn-row">
+        <button className="btn btn-primary" disabled={gate.disabled} title={gate.reason} onClick={() => run('修复联网检测', { action: 'captive', fix: true })}>
+          <Wifi size={15} /> 修复感叹号
+        </button>
+        <button className="btn btn-secondary" disabled={gate.disabled} title={gate.reason} onClick={() => run('恢复默认联网检测', { action: 'captive', fix: false })}>
+          恢复默认
+        </button>
+        <button className="btn btn-ghost" disabled={gate.disabled} title={gate.reason} onClick={() => run('读取网络设置', { action: 'status' })}>
+          <RefreshCw size={15} /> 读取
+        </button>
+      </div>
+      <p className="small muted">
+        私人 DNS{state ? `：${DNS_MODE_LABEL[state.dnsMode]}${state.dnsHost ? `（${state.dnsHost}）` : ''}` : ''}
+      </p>
+      <div className={`rom-input ${host && !hostOk ? 'invalid' : ''}`}>
+        <Globe size={16} />
+        <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="DNS 服务器主机名" spellCheck={false} list="dns-presets" />
+        <datalist id="dns-presets">
+          {DNS_PRESETS.map((p) => (
+            <option key={p.host} value={p.host}>
+              {p.label}
+            </option>
+          ))}
+        </datalist>
+      </div>
+      <div className="btn-row">
+        <button
+          className="btn btn-secondary"
+          disabled={gate.disabled || !hostOk}
+          title={gate.reason ?? (!hostOk ? '请填写主机名，例如 dns.alidns.com' : undefined)}
+          onClick={() => run(`设置私人 DNS：${host.trim()}`, { action: 'dns', mode: 'hostname', host: host.trim() })}
+        >
+          使用这个服务器
+        </button>
+        <button className="btn btn-ghost" disabled={gate.disabled} title={gate.reason} onClick={() => run('私人 DNS 改回自动', { action: 'dns', mode: 'opportunistic' })}>
+          改回自动
+        </button>
+        <button className="btn btn-ghost" disabled={gate.disabled} title={gate.reason} onClick={() => run('关闭私人 DNS', { action: 'dns', mode: 'off' })}>
+          关闭
+        </button>
+      </div>
+    </Card>
+  )
+}
+
+function ModuleCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolean; reason?: string } }) {
+  const [files, setFiles] = useState<string[]>([])
+  const [dragging, setDragging] = useState(false)
+  const rooted = isRooted(tb.device.root)
+  const reason = gate.reason ?? (!rooted ? `需要 Root，这台手机当前是「${tb.device.root ?? '未知'}」` : files.length === 0 ? '请先添加模块' : undefined)
+  const add = (paths: string[]) => setFiles((list) => [...list, ...paths.filter((p) => /\.zip$/i.test(p) && !list.includes(p))])
+
+  const install = async () => {
+    const r = await tb.start(files.length === 1 ? `安装模块 ${fileName(files[0])}` : `安装 ${files.length} 个模块`, { kind: 'installModules', files })
+    if (r.ok) setFiles([])
+  }
+
+  return (
+    <Card className="action-card">
+      <div className="action-icon accent">
+        <Blocks size={20} />
+      </div>
+      <h3>安装 Root 模块</h3>
+      <p className="muted">
+        把模块 <code>.zip</code> 拖到这里，按手机上的 Root 方案调用 Magisk / KernelSU / APatch 自己的安装命令，不用先传到手机上。装完重启生效。
+      </p>
+      <div
+        className={`dropzone small-drop ${dragging ? 'over' : ''}`}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragging(false)
+          add([...e.dataTransfer.files].map((f) => window.toolbox.pathForFile(f)).filter(Boolean))
+        }}
+      >
+        <button className="btn btn-secondary" onClick={async () => add(await window.toolbox.pickFiles('选择模块', ['zip']))}>
+          选择模块…
+        </button>
+      </div>
+      {files.length > 0 && (
+        <div className="file-list">
+          {files.map((f) => (
+            <div key={f} className="file-row">
+              <Blocks size={14} />
+              <span className="file-name" title={f}>
+                {fileName(f)}
+              </span>
+              <button className="icon-btn" disabled={tb.run.running} onClick={() => setFiles((list) => list.filter((x) => x !== f))} aria-label="移除">
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button className="btn btn-primary" disabled={!!reason} title={reason} onClick={install}>
+        <Blocks size={15} /> 安装{files.length > 1 ? `（${files.length} 个）` : ''}
+      </button>
     </Card>
   )
 }

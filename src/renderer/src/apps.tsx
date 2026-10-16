@@ -1,25 +1,29 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Copy, KeyRound, Package, RefreshCw, Search, Snowflake, X } from 'lucide-react'
+import { Archive, ArchiveRestore, Copy, KeyRound, Package, RefreshCw, Search, Snowflake, X } from 'lucide-react'
+import { isRooted } from '@shared/root'
 import type { AppEntry, AppPermission } from '@shared/types'
 import { PageHeader, useGate, type PageProps } from './pages'
 import { Callout, Card } from './ui'
 
-type Tab = 'clone' | 'user' | 'system'
+type Tab = 'clone' | 'user' | 'backup' | 'system'
 
 const LOAD: Record<Tab, { title: string; kind: 'listApps' | 'listUserApps' | 'listSystemApps' }> = {
   clone: { title: '读取应用列表', kind: 'listApps' },
   user: { title: '读取应用列表', kind: 'listUserApps' },
+  backup: { title: '读取应用列表', kind: 'listUserApps' },
   system: { title: '读取系统应用列表', kind: 'listSystemApps' }
 }
 
 export function AppsPage({ tb, confirm }: PageProps) {
   const [tab, setTab] = useState<Tab>('clone')
-  const [lists, setLists] = useState<Record<Tab, AppEntry[] | null>>({ clone: null, user: null, system: null })
+  const [lists, setLists] = useState<Record<Tab, AppEntry[] | null>>({ clone: null, user: null, backup: null, system: null })
   const [query, setQuery] = useState('')
   const [pending, setPending] = useState<string | null>(null)
   const [icons, setIcons] = useState<Record<string, string>>({})
   const [perms, setPerms] = useState<{ pkg: string; list: AppPermission[] } | null>(null)
+  const [withData, setWithData] = useState(false)
   const apps = lists[tab]
+  const rooted = isRooted(tb.device.root)
 
   // 列表出来后，图标在后台分批到达
   useEffect(() => window.toolbox.onAppIcons((batch) => setIcons((m) => ({ ...m, ...batch }))), [])
@@ -100,6 +104,29 @@ export function AppsPage({ tb, confirm }: PageProps) {
     if (r.permissions) setPerms({ pkg, list: r.permissions })
   }
 
+  const backup = async (a: AppEntry) => {
+    setPending(a.package)
+    await tb.start(`备份：${a.label}`, { kind: 'backupApp', package: a.package, label: a.label, withData: withData && rooted })
+    setPending(null)
+  }
+
+  const restore = async () => {
+    const dir = await window.toolbox.pickDir('选择应用备份文件夹（里面有 backup.json）')
+    if (!dir) return
+    confirm({
+      title: '从备份恢复应用',
+      intro: (
+        <>
+          先安装备份里的安装包；备份里有应用数据、手机也已 Root 时，会<strong>清空这个应用在手机上现有的数据</strong>，换成备份里的。
+          只恢复工具箱备份出来的文件夹。
+        </>
+      ),
+      checks: ['我知道手机上这个应用现有的数据会被备份覆盖'],
+      confirmText: '恢复',
+      onConfirm: () => tb.start('恢复应用', { kind: 'restoreApp', dir })
+    })
+  }
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!apps || !q) return apps
@@ -119,13 +146,16 @@ export function AppsPage({ tb, confirm }: PageProps) {
 
   return (
     <>
-      <PageHeader title="应用管理" desc="应用双开、冻结不常用的应用、一键授予应用需要的 adb 权限，或者卸载用不到的预装应用" />
+      <PageHeader title="应用管理" desc="应用双开、冻结不常用的应用、一键授予 adb 权限、备份应用（Root 后可含数据），或者卸载用不到的预装应用" />
       <div className="segmented apps-tabs">
         <button className={tab === 'clone' ? 'on' : ''} onClick={() => setTab('clone')}>
           应用双开
         </button>
         <button className={tab === 'user' ? 'on' : ''} onClick={() => setTab('user')}>
           冻结与权限
+        </button>
+        <button className={tab === 'backup' ? 'on' : ''} onClick={() => setTab('backup')}>
+          备份与恢复
         </button>
         <button className={tab === 'system' ? 'on' : ''} onClick={() => setTab('system')}>
           预装应用
@@ -140,6 +170,13 @@ export function AppsPage({ tb, confirm }: PageProps) {
         <Callout tone="info">
           <strong>冻结</strong>：应用和数据都保留，只是不能运行、图标从桌面消失，随时可以解冻。
           <strong>权限</strong>：自动化、按键映射、手势类应用常要求「用电脑执行 adb 命令授权」，点「权限」就能看到它申请了哪些、一键授予。
+        </Callout>
+      )}
+      {tab === 'backup' && (
+        <Callout tone="info">
+          把应用的安装包备份到「文档\一加工具箱\应用备份」，有分包时打成 <code>.apks</code>，也能直接拖进「系统工具 → 安装应用」装回去。
+          手机已 Root 时可以连同应用数据（聊天记录、设置、存档等，不含缓存和 <code>Android/data</code> 里的文件）一起备份。
+          换手机恢复后，部分应用的登录状态会失效，需要重新登录。
         </Callout>
       )}
       {tab === 'system' && (
@@ -170,10 +207,21 @@ export function AppsPage({ tb, confirm }: PageProps) {
             <RefreshCw size={15} /> {apps ? '刷新' : '读取应用列表'}
           </button>
         </div>
+        {tab === 'backup' && (
+          <div className="backup-bar">
+            <label className="check" title={rooted ? undefined : `需要 Root，这台手机当前是「${tb.device.root ?? '未知'}」`}>
+              <input type="checkbox" checked={withData && rooted} disabled={!rooted} onChange={(e) => setWithData(e.target.checked)} />
+              <span>同时备份应用数据{rooted ? '（备份前会先停止应用）' : '（需要 Root）'}</span>
+            </label>
+            <button className="btn btn-ghost" disabled={gate.disabled} title={gate.reason} onClick={restore}>
+              <ArchiveRestore size={15} /> 从备份恢复…
+            </button>
+          </div>
+        )}
 
         {!apps && (
           <div className="empty">
-            {tab === 'clone' ? <Copy size={28} /> : tab === 'user' ? <Snowflake size={28} /> : <Package size={28} />}
+            {tab === 'clone' ? <Copy size={28} /> : tab === 'user' ? <Snowflake size={28} /> : tab === 'backup' ? <Archive size={28} /> : <Package size={28} />}
             <p>
               {gate.reason && !tb.run.running
                 ? gate.reason
@@ -217,6 +265,11 @@ export function AppsPage({ tb, confirm }: PageProps) {
                       </button>
                       {freezeButton(a)}
                     </>
+                  )}
+                  {tab === 'backup' && (
+                    <button className="btn btn-secondary" disabled={gate.disabled} onClick={() => backup(a)}>
+                      <Archive size={14} /> {pending === a.package ? '备份中…' : '备份'}
+                    </button>
                   )}
                   {tab === 'system' && (
                     <>
