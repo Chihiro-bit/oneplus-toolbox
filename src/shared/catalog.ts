@@ -91,6 +91,15 @@ export const BUILTIN_CATALOG: Catalog = {
   ]
 }
 
+/** 系统工具里一键安装 / 启动的 Shizuku。GitHub 没有公布资产摘要，sha256 是从 Releases 下载后计算的 */
+export const SHIZUKU = {
+  package: 'moe.shizuku.privileged.api',
+  version: '13.6.0',
+  url: 'https://github.com/RikkaApps/Shizuku/releases/download/v13.6.0/shizuku-v13.6.0.r1086.2650830c-release.apk',
+  sha256: '6e273ab0e991c4e79bc8b1bbb9b9dd739ccac1a8712a541a214078886b7b790f',
+  homepage: 'https://github.com/RikkaApps/Shizuku'
+} as const
+
 export const FAMILY_LABEL: Record<RootFamily, string> = {
   magisk: 'Magisk 系',
   apatch: 'APatch',

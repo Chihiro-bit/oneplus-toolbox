@@ -1,7 +1,10 @@
-import { useState, type DragEvent } from 'react'
-import { BellOff, BellRing, FileUp, Package, PackagePlus, ShoppingBag, X } from 'lucide-react'
+import { useState, type DragEvent, type ReactNode } from 'react'
+import { BellOff, BellRing, Check, FileUp, Package, PackagePlus, Power, RefreshCw, ShoppingBag, X, Zap } from 'lucide-react'
+import { SHIZUKU } from '@shared/catalog'
+import type { ShizukuAction, ShizukuState } from '@shared/types'
 import { FilesCard, MirrorCard, WirelessCard } from './media'
 import { PageHeader, useGate, type PageProps } from './pages'
+import type { Toolbox } from './state'
 import { Card } from './ui'
 
 const INSTALL_EXTENSIONS = ['apk', 'apks', 'xapk']
@@ -105,8 +108,9 @@ export function ToolsPage({ tb, confirm }: PageProps) {
         </div>
       </Card>
 
-      <div className="action-grid three">
+      <div className="action-grid two">
         <MirrorCard tb={tb} gate={gate} />
+        <ShizukuCard tb={tb} gate={gate} />
         <Card className="action-card">
           <div className="action-icon accent">
             <ShoppingBag size={20} />
@@ -178,5 +182,71 @@ export function ToolsPage({ tb, confirm }: PageProps) {
       <WirelessCard tb={tb} />
       {gate.reason && !tb.run.running && <p className="gate-hint">{gate.reason}</p>}
     </>
+  )
+}
+
+function Req({ ok, children }: { ok: boolean; children: ReactNode }) {
+  return (
+    <li className={ok ? 'ok-text' : 'muted'}>
+      {ok ? <Check size={13} /> : <X size={13} />} {children}
+    </li>
+  )
+}
+
+function ShizukuCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolean; reason?: string } }) {
+  const [state, setState] = useState<ShizukuState | null>(null)
+  const run = async (action: ShizukuAction) => {
+    const r = await tb.start(action === 'start' ? '启动 Shizuku' : '检查 Shizuku 状态', { kind: 'shizuku', action })
+    if (r.shizuku) setState(r.shizuku)
+  }
+
+  return (
+    <Card className="action-card">
+      <div className="action-icon accent">
+        <Zap size={20} />
+      </div>
+      <h3>
+        Shizuku{' '}
+        {state && (
+          <span className={`chip ${state.running ? 'chip-ok' : ''}`}>
+            {!state.installed ? '未安装' : state.running ? '运行中' : '未运行'}
+            {state.installed && state.version ? ` · ${state.version}` : ''}
+          </span>
+        )}
+      </h3>
+      <p className="muted">
+        让其它应用免 Root 调用系统接口（如冰箱、App Ops、黑阈）。手机上没装时会先从{' '}
+        <button className="link-btn" onClick={() => window.toolbox.openExternal(SHIZUKU.homepage)}>
+          官方发布页
+        </button>{' '}
+        下载 {SHIZUKU.version} 并校验 sha256。免 Root 启动在手机重启后会失效，需要重新启动一次。
+      </p>
+      <div className="btn-row">
+        <button className="btn btn-primary" disabled={gate.disabled} title={gate.reason} onClick={() => run('start')}>
+          <Zap size={15} /> {state && !state.installed ? '安装并启动' : '启动 Shizuku'}
+        </button>
+        <button className="btn btn-secondary" disabled={gate.disabled} title={gate.reason} onClick={() => run('status')}>
+          <RefreshCw size={15} /> 检查状态
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={gate.disabled || state?.installed === false}
+          title={gate.reason ?? (state?.installed === false ? '请先安装并启动 Shizuku' : undefined)}
+          onClick={() => run('autostart')}
+        >
+          <Power size={15} /> 开机自启
+        </button>
+      </div>
+      {state?.installed && state.sdk !== undefined && (
+        <ul className="shizuku-reqs small">
+          <Req ok={state.sdk >= 33}>Android 13 及以上（免 Root 开机自启的前提）</Req>
+          <Req ok={!!state.secureSettings}>已授予「修改安全系统设置」</Req>
+          <Req ok={!!state.bootReceiver}>开机启动没有被关掉</Req>
+          <li className="muted">
+            另外需要在手机上：用 Shizuku 的「通过无线调试启动」配对并启动一次；在系统设置里允许 Shizuku 自启动
+          </li>
+        </ul>
+      )}
+    </Card>
   )
 }

@@ -272,6 +272,30 @@ export interface AppEntry {
   protected?: boolean
 }
 
+/** status=只读状态，start=启动（没装时先下载安装），autostart=为免 Root 开机自启做好电脑这边能做的准备 */
+export type ShizukuAction = 'status' | 'start' | 'autostart'
+
+export interface ShizukuState {
+  installed: boolean
+  version?: string
+  /** shizuku_server 进程在运行 */
+  running: boolean
+  /** ro.build.version.sdk；免 Root 开机自启需要 33（Android 13）及以上 */
+  sdk?: number
+  /** Shizuku 已获得 WRITE_SECURE_SETTINGS（开机自启时用它打开无线调试） */
+  secureSettings?: boolean
+  /** Shizuku 的开机广播接收器没有被关掉 */
+  bootReceiver?: boolean
+}
+
+/** 应用申请了、可以用 adb 授予的权限 */
+export interface AppPermission {
+  name: string
+  label: string
+  desc: string
+  granted: boolean
+}
+
 export type OperationRequest =
   | { kind: 'reboot'; target: RebootTarget }
   | { kind: 'unlock' }
@@ -299,6 +323,11 @@ export type OperationRequest =
   | { kind: 'debloat'; package: string; remove: boolean }
   | { kind: 'installPlay'; apk: string }
   | { kind: 'otaUpdates'; disable: boolean }
+  | { kind: 'shizuku'; action: ShizukuAction }
+  | { kind: 'listUserApps' }
+  | { kind: 'freezeApp'; package: string; freeze: boolean }
+  | { kind: 'appPermissions'; package: string }
+  | { kind: 'grantPermission'; package: string; permission: string; grant: boolean }
   | { kind: 'edlDetect' }
   | { kind: 'edlProbe'; profile: EdlProfile }
   | { kind: 'edlFlash'; profile: EdlProfile }
@@ -327,6 +356,10 @@ export interface OperationResult {
   drivers?: DriverEntry[]
   /** bootCollect 的结果 */
   bootState?: BootState
+  /** shizuku 的结果 */
+  shizuku?: ShizukuState
+  /** appPermissions / grantPermission 的结果 */
+  permissions?: AppPermission[]
 }
 
 export interface Settings {

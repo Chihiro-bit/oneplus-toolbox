@@ -1588,8 +1588,39 @@ code {
 .apps-tabs {
   margin-bottom: 14px;
 }
-.app-row .chip {
+.app-row .chip,
+.perm-row .chip {
   margin-top: 0;
+}
+.shizuku-reqs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.shizuku-reqs svg {
+  vertical-align: -2px;
+}
+.perm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 12px 60px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.perm-panel p {
+  margin: 0;
+}
+.perm-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.perm-row .app-text span {
+  white-space: normal;
 }
 
 /* ───────────── 文件传输 ───────────── */

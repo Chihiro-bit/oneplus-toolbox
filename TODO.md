@@ -102,6 +102,11 @@
 ## 第三档：长期方向
 
 - [ ] **系统更新后保留 Root**：修补新版本全量包里的 init_boot，刷到另一个槽位，然后切换槽位（暂不做：要在 OTA 装好、还没重启时操作，虚拟 A/B 有未合并的 snapshot，bootloader 下刷另一个槽位的行为需要真机验证）
+- [x] **Shizuku**（`ops/shizuku.ts`，「系统工具」）：没装时从官方 Releases 下载并校验 sha256 后安装；运行原生库目录里的 `libshizuku.so` 启动（找不到时退回 `start.sh`），再用 `pidof shizuku_server` 确认
+  - [x] 开机自启（Android 13+）：授予 WRITE_SECURE_SETTINGS、确认开机广播没被关；无线调试配对只能在手机上做，卡片上列出了条件
+  - [ ] 真机验证：从未安装开始走一遍安装 + 启动；设置开机自启后重启手机看能否自动启动（一加 13 上只读探测已验证）
+- [x] **冻结应用 / adb 授权**（「应用管理 → 冻结与权限」）：`pm disable-user` / `pm enable`，当前桌面和输入法不允许冻结；从 `dumpsys package` 读应用申请了哪些 development 权限（`shared/permissions.ts`），一键 `pm grant` / `revoke`
+  - [ ] App Ops 管理（`appops set`）、常用系统设置开关（动画速度、刷新率等）
 - [x] **无线调试配对**（「系统工具 → 无线调试」）：`adb pair` / `adb connect` / `adb disconnect`，以及插线时一键 `adb tcpip 5555` 切到无线
 - [ ] **国际化**：把界面文字抽出来，加英文界面（暂不做：要改动几乎所有界面和主进程提示文字，等功能稳定后一次做完更划算）
 - [ ] **全量包查找**：按机型 + 版本给出对应的 OTA 下载链接，数据放在远程目录里，下载后坚持 sha256 校验（缺数据：需要先整理可信的链接和哈希）

@@ -1,6 +1,7 @@
 import { FEATURES } from '@shared/features'
 import type { OperationRequest, OperationResult } from '@shared/types'
-import { cloneApp, debloat, installPlay, listApps, listSystemApps, otaUpdates } from './apps'
+import { cloneApp, debloat, freezeApp, installPlay, listApps, listSystemApps, listUserApps, otaUpdates } from './apps'
+import { appPermissions, grantPermission } from './permissions'
 export { loadIcons } from './apps'
 import { reboot, setLock, switchSlot } from './basic'
 import { backupPartitions } from './backup'
@@ -15,6 +16,7 @@ import { edlDetect, edlFlash, edlProbe, edlReset } from './edl'
 import { installApps } from './install'
 import { modules, restoreStock, undoFlash, unroot } from './rescue'
 import { root } from './root'
+import { shizuku } from './shizuku'
 
 export type { OpContext }
 
@@ -75,6 +77,16 @@ export async function runOperation(req: OperationRequest, ctx: OpContext): Promi
       return installPlay(req.apk, ctx)
     case 'otaUpdates':
       return otaUpdates(req.disable, ctx)
+    case 'shizuku':
+      return shizuku(req.action, ctx)
+    case 'listUserApps':
+      return listUserApps(ctx)
+    case 'freezeApp':
+      return freezeApp(req.package, req.freeze, ctx)
+    case 'appPermissions':
+      return appPermissions(req.package, ctx)
+    case 'grantPermission':
+      return grantPermission(req.package, req.permission, req.grant, ctx)
     case 'edlDetect':
       return edlDetect(ctx)
     case 'edlProbe':
@@ -84,6 +96,8 @@ export async function runOperation(req: OperationRequest, ctx: OpContext): Promi
     case 'edlReset':
       return edlReset(ctx)
   }
+  // 界面比主进程新（例如开发时只热更新了界面）时会走到这里
+  throw new OpError(`主进程不认识「${(req as { kind: string }).kind}」操作，请重启工具箱`)
 }
 
 export function isOpError(e: unknown): e is Error {

@@ -1,17 +1,24 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Copy, Package, RefreshCw, Search, X } from 'lucide-react'
-import type { AppEntry } from '@shared/types'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Copy, KeyRound, Package, RefreshCw, Search, Snowflake, X } from 'lucide-react'
+import type { AppEntry, AppPermission } from '@shared/types'
 import { PageHeader, useGate, type PageProps } from './pages'
 import { Callout, Card } from './ui'
 
-type Tab = 'clone' | 'system'
+type Tab = 'clone' | 'user' | 'system'
+
+const LOAD: Record<Tab, { title: string; kind: 'listApps' | 'listUserApps' | 'listSystemApps' }> = {
+  clone: { title: '读取应用列表', kind: 'listApps' },
+  user: { title: '读取应用列表', kind: 'listUserApps' },
+  system: { title: '读取系统应用列表', kind: 'listSystemApps' }
+}
 
 export function AppsPage({ tb, confirm }: PageProps) {
   const [tab, setTab] = useState<Tab>('clone')
-  const [lists, setLists] = useState<Record<Tab, AppEntry[] | null>>({ clone: null, system: null })
+  const [lists, setLists] = useState<Record<Tab, AppEntry[] | null>>({ clone: null, user: null, system: null })
   const [query, setQuery] = useState('')
   const [pending, setPending] = useState<string | null>(null)
   const [icons, setIcons] = useState<Record<string, string>>({})
+  const [perms, setPerms] = useState<{ pkg: string; list: AppPermission[] } | null>(null)
   const apps = lists[tab]
 
   // 列表出来后，图标在后台分批到达
@@ -19,7 +26,7 @@ export function AppsPage({ tb, confirm }: PageProps) {
   const gate = useGate(tb, ['system'])
 
   const load = async () => {
-    const r = await tb.start(tab === 'clone' ? '读取应用列表' : '读取系统应用列表', { kind: tab === 'clone' ? 'listApps' : 'listSystemApps' })
+    const r = await tb.start(LOAD[tab].title, { kind: LOAD[tab].kind })
     if (r.ok && r.apps) setLists((l) => ({ ...l, [tab]: r.apps! }))
   }
 
@@ -59,31 +66,86 @@ export function AppsPage({ tb, confirm }: PageProps) {
     })
   }
 
+  const toggleFreeze = (a: AppEntry) => {
+    const run = async () => {
+      setPending(a.package)
+      const r = await tb.start(a.disabled ? `解冻：${a.label}` : `冻结：${a.label}`, { kind: 'freezeApp', package: a.package, freeze: !a.disabled })
+      setPending(null)
+      if (r.ok) patch(a.package, { disabled: !a.disabled })
+    }
+    // 第三方应用冻结了也不影响系统；预装应用可能被别的功能依赖，先确认
+    if (a.disabled || !a.system) return run()
+    confirm({
+      title: `冻结 ${a.label}`,
+      intro: (
+        <>
+          停用 <code>{a.package}</code>（<code>pm disable-user</code>），应用和数据都保留，随时可以在这里解冻。
+          冻结其它功能依赖的预装组件，可能导致相关功能失灵。
+        </>
+      ),
+      checks: ['我确认知道这个应用是做什么的，冻结它不会影响我需要的功能'],
+      confirmText: '冻结',
+      onConfirm: run
+    })
+  }
+
+  const togglePerms = async (a: AppEntry) => {
+    if (perms?.pkg === a.package) return setPerms(null)
+    const r = await tb.start(`读取 ${a.label} 的权限`, { kind: 'appPermissions', package: a.package })
+    if (r.ok && r.permissions) setPerms({ pkg: a.package, list: r.permissions })
+  }
+
+  const grant = async (pkg: string, p: AppPermission) => {
+    const r = await tb.start(`${p.granted ? '撤销' : '授予'}「${p.label}」`, { kind: 'grantPermission', package: pkg, permission: p.name, grant: !p.granted })
+    if (r.permissions) setPerms({ pkg, list: r.permissions })
+  }
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!apps || !q) return apps
     return apps.filter((a) => a.label.toLowerCase().includes(q) || a.package.toLowerCase().includes(q))
   }, [apps, query])
 
+  const freezeButton = (a: AppEntry) => (
+    <button
+      className={`btn ${a.disabled ? 'btn-secondary' : 'btn-ghost'}`}
+      disabled={gate.disabled || (a.protected && !a.disabled)}
+      title={a.protected && !a.disabled ? '系统运行必需的组件，不允许冻结' : undefined}
+      onClick={() => toggleFreeze(a)}
+    >
+      {pending === a.package ? '处理中…' : a.disabled ? '解冻' : '冻结'}
+    </button>
+  )
+
   return (
     <>
-      <PageHeader title="应用管理" desc="把第三方应用克隆到分身空间，或者卸载用不到的预装应用" />
+      <PageHeader title="应用管理" desc="应用双开、冻结不常用的应用、一键授予应用需要的 adb 权限，或者卸载用不到的预装应用" />
       <div className="segmented apps-tabs">
         <button className={tab === 'clone' ? 'on' : ''} onClick={() => setTab('clone')}>
           应用双开
+        </button>
+        <button className={tab === 'user' ? 'on' : ''} onClick={() => setTab('user')}>
+          冻结与权限
         </button>
         <button className={tab === 'system' ? 'on' : ''} onClick={() => setTab('system')}>
           预装应用
         </button>
       </div>
-      {tab === 'clone' ? (
+      {tab === 'clone' && (
         <Callout tone="info">
           利用 ColorOS / 氧 OS 自带的分身空间（用户 999）。首次使用前，需要先在手机「设置 → 应用 → 应用分身」中任意双开一个应用，系统才会创建分身空间。
         </Callout>
-      ) : (
+      )}
+      {tab === 'user' && (
+        <Callout tone="info">
+          <strong>冻结</strong>：应用和数据都保留，只是不能运行、图标从桌面消失，随时可以解冻。
+          <strong>权限</strong>：自动化、按键映射、手势类应用常要求「用电脑执行 adb 命令授权」，点「权限」就能看到它申请了哪些、一键授予。
+        </Callout>
+      )}
+      {tab === 'system' && (
         <Callout tone="warn">
-          卸载只针对当前用户，不需要 Root，随时可以恢复。但工具箱不知道哪些预装应用卸掉后会影响其它功能，请只卸载你确认用不到的。
-          开机、解锁、权限管理等必需组件已被锁定，不能卸载。
+          卸载和冻结都只针对当前用户，不需要 Root，随时可以恢复。但工具箱不知道哪些预装应用停掉后会影响其它功能，请只处理你确认用不到的。
+          开机、解锁、权限管理等必需组件已被锁定，不能卸载或冻结。
         </Callout>
       )}
 
@@ -111,13 +173,13 @@ export function AppsPage({ tb, confirm }: PageProps) {
 
         {!apps && (
           <div className="empty">
-            {tab === 'clone' ? <Copy size={28} /> : <Package size={28} />}
+            {tab === 'clone' ? <Copy size={28} /> : tab === 'user' ? <Snowflake size={28} /> : <Package size={28} />}
             <p>
               {gate.reason && !tb.run.running
                 ? gate.reason
-                : tab === 'clone'
-                  ? '点击「读取应用列表」，应用较多时需要一分钟左右'
-                  : '点击「读取应用列表」，系统应用有几百个，需要一两分钟'}
+                : tab === 'system'
+                  ? '点击「读取应用列表」，系统应用有几百个，需要一两分钟'
+                  : '点击「读取应用列表」，应用较多时需要一分钟左右'}
             </p>
           </div>
         )}
@@ -126,37 +188,70 @@ export function AppsPage({ tb, confirm }: PageProps) {
           <ul className="app-list">
             {shown.length === 0 && <li className="muted app-none">没有匹配的应用</li>}
             {shown.map((a) => (
-              <li key={a.package} className="app-row">
-                {icons[a.package] ? (
-                  <img className="app-icon" src={icons[a.package]} alt="" loading="lazy" />
-                ) : (
-                  <div className="app-avatar" aria-hidden>
-                    {[...a.label][0]}
+              <Fragment key={a.package}>
+                <li className="app-row">
+                  {icons[a.package] ? (
+                    <img className="app-icon" src={icons[a.package]} alt="" loading="lazy" />
+                  ) : (
+                    <div className="app-avatar" aria-hidden>
+                      {[...a.label][0]}
+                    </div>
+                  )}
+                  <div className="app-text">
+                    <strong>{a.label}</strong>
+                    <span>{a.package}</span>
                   </div>
+                  {tab === 'clone' && a.cloned && <span className="chip chip-ok">已双开</span>}
+                  {tab !== 'clone' && a.disabled && !a.removed && <span className="chip">已冻结</span>}
+                  {tab === 'system' && a.removed && <span className="chip">已卸载</span>}
+                  {tab === 'system' && a.protected && <span className="chip">系统必需</span>}
+                  {tab === 'clone' && (
+                    <button className={`btn ${a.cloned ? 'btn-ghost' : 'btn-secondary'}`} disabled={gate.disabled} onClick={() => toggleClone(a)}>
+                      {pending === a.package ? '处理中…' : a.cloned ? '移除' : '双开'}
+                    </button>
+                  )}
+                  {tab === 'user' && (
+                    <>
+                      <button className={`btn ${perms?.pkg === a.package ? 'btn-secondary' : 'btn-ghost'}`} disabled={gate.disabled} onClick={() => togglePerms(a)}>
+                        <KeyRound size={14} /> 权限
+                      </button>
+                      {freezeButton(a)}
+                    </>
+                  )}
+                  {tab === 'system' && (
+                    <>
+                      {!a.removed && freezeButton(a)}
+                      <button
+                        className={`btn ${a.removed ? 'btn-secondary' : 'btn-ghost'}`}
+                        disabled={gate.disabled || (a.protected && !a.removed)}
+                        title={a.protected && !a.removed ? '系统运行必需的组件，不允许卸载' : undefined}
+                        onClick={() => toggleSystem(a)}
+                      >
+                        {pending === a.package ? '处理中…' : a.removed ? '恢复' : '卸载'}
+                      </button>
+                    </>
+                  )}
+                </li>
+                {tab === 'user' && perms?.pkg === a.package && (
+                  <li className="perm-panel">
+                    {perms.list.length === 0 && (
+                      <p className="muted small">这个应用没有申请需要用 adb 授予的权限。它要的如果是悬浮窗、无障碍、通知使用权等，请在手机设置里打开。</p>
+                    )}
+                    {perms.list.map((p) => (
+                      <div key={p.name} className="perm-row">
+                        <div className="app-text">
+                          <strong>{p.label}</strong>
+                          <span title={p.name}>{p.desc}</span>
+                        </div>
+                        {p.granted && <span className="chip chip-ok">已授予</span>}
+                        <button className={`btn ${p.granted ? 'btn-ghost' : 'btn-primary'}`} disabled={gate.disabled} onClick={() => grant(a.package, p)}>
+                          {p.granted ? '撤销' : '授予'}
+                        </button>
+                      </div>
+                    ))}
+                  </li>
                 )}
-                <div className="app-text">
-                  <strong>{a.label}</strong>
-                  <span>{a.package}</span>
-                </div>
-                {tab === 'clone' && a.cloned && <span className="chip chip-ok">已双开</span>}
-                {tab === 'system' && a.removed && <span className="chip">已卸载</span>}
-                {tab === 'system' && a.disabled && !a.removed && <span className="chip">已停用</span>}
-                {tab === 'system' && a.protected && <span className="chip">系统必需</span>}
-                {tab === 'clone' ? (
-                  <button className={`btn ${a.cloned ? 'btn-ghost' : 'btn-secondary'}`} disabled={gate.disabled} onClick={() => toggleClone(a)}>
-                    {pending === a.package ? '处理中…' : a.cloned ? '移除' : '双开'}
-                  </button>
-                ) : (
-                  <button
-                    className={`btn ${a.removed ? 'btn-secondary' : 'btn-ghost'}`}
-                    disabled={gate.disabled || (a.protected && !a.removed)}
-                    title={a.protected && !a.removed ? '系统运行必需的组件，不允许卸载' : undefined}
-                    onClick={() => toggleSystem(a)}
-                  >
-                    {pending === a.package ? '处理中…' : a.removed ? '恢复' : '卸载'}
-                  </button>
-                )}
-              </li>
+              </Fragment>
             ))}
           </ul>
         )}

@@ -156,6 +156,45 @@ export async function debloat(pkg: string, remove: boolean, ctx: OpContext): Pro
   return { ok: true, message: remove ? `已卸载 ${pkg}（只对当前用户，可以随时恢复）` : `已恢复 ${pkg}` }
 }
 
+// ───────────── 冻结应用 ─────────────
+
+/** 列出第三方应用，标出已冻结（停用）的 */
+export async function listUserApps(ctx: OpContext): Promise<OperationResult> {
+  const serial = await requireSystem(ctx)
+  ctx.step('正在读取应用列表，应用较多时需要一分钟左右')
+  const script = appListScript('pm list packages -3 -f', [
+    'for p in $(pm list packages -3 -d --user 0 | sed "s/package://"); do echo "DISABLED|$p"; done'
+  ])
+  const { apps, marks } = await readApps(serial, script, ctx)
+  const disabled = marks.get('DISABLED') ?? new Set()
+  for (const a of apps) a.disabled = disabled.has(a.package)
+  apps.sort((a, b) => Number(b.disabled) - Number(a.disabled) || a.label.localeCompare(b.label, 'zh-CN'))
+  return { ok: true, message: `共 ${apps.length} 个应用，其中 ${disabled.size} 个已冻结`, apps }
+}
+
+/**
+ * 冻结 = pm disable-user：应用和数据都还在，只是不能运行、图标从桌面消失；解冻 = pm enable。
+ * 比卸载温和，适合偶尔才用、又爱在后台跑的应用。当前的桌面和输入法不允许冻结，否则手机可能没法操作
+ */
+export async function freezeApp(pkg: string, freeze: boolean, ctx: OpContext): Promise<OperationResult> {
+  if (!/^[\w.]+$/.test(pkg)) throw new OpError('包名不合法')
+  if (freeze && PROTECTED_PACKAGES.has(pkg)) throw new OpError(`${pkg} 是系统运行必需的组件，工具箱不允许冻结`)
+  const serial = await requireSystem(ctx)
+  if (freeze) {
+    const ime = await adb(serial, ['shell', 'settings', 'get', 'secure', 'default_input_method'], ctx, 15_000, false)
+    if (ime.stdout.trim().split('/')[0] === pkg) throw new OpError('这是当前正在使用的输入法，冻结后可能没法输入锁屏密码。请先换一个输入法')
+    const home = await adb(serial, ['shell', 'cmd', 'package', 'resolve-activity', '--brief', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.HOME'], ctx, 15_000, false)
+    if (home.stdout.trim().split(/\r?\n/).pop()?.split('/')[0] === pkg) throw new OpError('这是当前的桌面，冻结后会没有主屏幕。请先换一个默认桌面')
+  }
+  ctx.step(freeze ? `正在冻结 ${pkg}` : `正在解冻 ${pkg}`)
+  const r = freeze
+    ? await adb(serial, ['shell', 'pm', 'disable-user', '--user', '0', pkg], ctx)
+    : await adb(serial, ['shell', 'pm', 'enable', '--user', '0', pkg], ctx)
+  const ok = freeze ? /new state: disabled/i.test(r.all) : /new state: (enabled|default)/i.test(r.all)
+  if (!ok) return { ok: false, message: freeze ? `冻结 ${pkg} 失败，详见日志` : `解冻 ${pkg} 失败，详见日志` }
+  return { ok: true, message: freeze ? `已冻结 ${pkg}，需要时在这里解冻即可` : `已解冻 ${pkg}` }
+}
+
 // ───────────── 应用图标（列表显示后在后台补全） ─────────────
 
 interface IconSource {

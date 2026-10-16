@@ -65,7 +65,7 @@ ipcMain.handle('device:select', (_e, serial: string) => {
 ipcMain.handle('op:run', async (_e, req: OperationRequest): Promise<OperationResult> => {
   if (busy) return { ok: false, message: '已有操作正在进行' }
   busy = new AbortController()
-  log('step', `── 开始：${describeRequest(req)} ──`)
+  log('step', `── 开始：${describeRequest(req) ?? req.kind} ──`)
   try {
     const result = await runOperation(req, {
       signal: busy.signal,
@@ -77,7 +77,7 @@ ipcMain.handle('op:run', async (_e, req: OperationRequest): Promise<OperationRes
       device: setDevice
     })
     log(result.ok ? 'ok' : 'error', result.message)
-    if ((req.kind === 'listApps' || req.kind === 'listSystemApps') && result.ok) loadIcons((icons) => send('apps:icons', icons)).catch(() => {})
+    if ((req.kind === 'listApps' || req.kind === 'listSystemApps' || req.kind === 'listUserApps') && result.ok) loadIcons((icons) => send('apps:icons', icons)).catch(() => {})
     return result
   } catch (e) {
     const message =
@@ -217,6 +217,16 @@ function describeRequest(req: OperationRequest): string {
       return '安装 Play 商店'
     case 'otaUpdates':
       return req.disable ? '禁用系统更新' : '恢复系统更新'
+    case 'shizuku':
+      return { start: '启动 Shizuku', status: '检查 Shizuku 状态', autostart: '设置 Shizuku 开机自启' }[req.action]
+    case 'listUserApps':
+      return '读取应用列表'
+    case 'freezeApp':
+      return req.freeze ? `冻结 ${req.package}` : `解冻 ${req.package}`
+    case 'appPermissions':
+      return `读取 ${req.package} 的权限`
+    case 'grantPermission':
+      return `${req.grant ? '授予' : '撤销'} ${req.package} 的 ${req.permission}`
     case 'edlDetect':
       return '查找 9008 设备'
     case 'edlProbe':
