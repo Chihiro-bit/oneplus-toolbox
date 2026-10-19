@@ -20,6 +20,12 @@ jobs:
           node-version: 22
           cache: npm
 
+      # fetch-tools 用 jlink 生成 AAB 转换所需的内置 Java 运行时
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - run: npm ci
 
       - name: 用标签设置版本号

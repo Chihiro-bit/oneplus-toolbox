@@ -81,6 +81,7 @@
 - [x] **安装 APK**（`ops/install.ts`，界面在「系统工具」）
   - 支持拖拽、批量安装
   - 支持 `.apks` / `.xapk` 分包（`adb install-multiple`），ABI 分包只装手机首选架构；XAPK 的 OBB 推到 manifest 指定位置
+  - 支持 `.aab`：用 bundletool 按当前手机生成对应的分包（安装包内置精简 JRE，用户无需安装 Java），没有调试密钥时用内置密钥签名
 
 ## 第二档：值得做，工作量中等
 

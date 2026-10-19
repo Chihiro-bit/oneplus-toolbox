@@ -41,6 +41,13 @@ describe('pickSplits', () => {
     expect(pickSplits(names, 'arm64-v8a,armeabi-v7a,armeabi')).toEqual(['base.apk', 'split_config.arm64_v8a.apk', 'split_config.zh.apk']))
   it('首选 ABI 不存在时退到下一个', () =>
     expect(pickSplits(['base.apk', 'split_config.armeabi_v7a.apk'], 'arm64-v8a,armeabi-v7a')).toEqual(['base.apk', 'split_config.armeabi_v7a.apk']))
+  it('bundletool 目录输出的分包名', () =>
+    expect(
+      pickSplits(
+        ['splits/base-master.apk', 'splits/base-arm64_v8a.apk', 'splits/base-x86_64.apk', 'splits/base-zh.apk', 'toc.pb'],
+        'arm64-v8a,x86_64'
+      )
+    ).toEqual(['splits/base-master.apk', 'splits/base-arm64_v8a.apk', 'splits/base-zh.apk']))
 })
 
 describe('maskReport', () => {

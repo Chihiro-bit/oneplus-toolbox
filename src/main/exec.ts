@@ -22,6 +22,10 @@ export const tools = {
   get aapt2() { return join(binDir(), 'aapt2') },
   /** 投屏，随附的 DLL 和 scrcpy-server 必须与它同目录 */
   get scrcpy() { return join(binDir(), 'scrcpy', 'scrcpy.exe') },
+  /** AAB 转分包 APK */
+  get bundletool() { return join(binDir(), 'bundletool', 'bundletool.jar') },
+  /** 随安装包的精简 Java 运行时（bundletool 用），用户不需要自己安装 Java */
+  get java() { return join(binDir(), 'jre', 'bin', 'java.exe') },
   /** 高通 9008 / EDL 刷写工具，随附的 DLL 必须与它同目录 */
   get qdl() { return join(binDir(), 'qdl', 'qdl.exe') }
 }

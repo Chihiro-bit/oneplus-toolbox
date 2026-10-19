@@ -3,10 +3,11 @@ import { basename, extname, join, relative } from 'node:path'
 import type { OperationResult } from '@shared/types'
 import { getProps } from '../device'
 import { exec, tools } from '../exec'
+import { convertAab } from './aab'
 import { adb, OpError, requireSystem, type OpContext } from './common'
 import { workDir } from './root'
 
-export const INSTALL_EXTENSIONS = ['apk', 'apks', 'xapk']
+export const INSTALL_EXTENSIONS = ['apk', 'apks', 'xapk', 'aab']
 
 const ABI_SPLIT = /(?:^|[._-])(arm64_v8a|armeabi_v7a|armeabi|x86_64|x86|mips64|mips)\.apk$/i
 
@@ -45,7 +46,8 @@ interface XapkExpansion {
 
 /**
  * 批量安装：.apk 用 adb install，.apks / .xapk 解开后用 adb install-multiple 装成一个应用；
- * .xapk 里带的 OBB 数据包推到 manifest 指定的位置。所有文件先复制到临时目录再交给 adb，避开中文路径
+ * .aab 先用 bundletool 按手机配置转换成分包再安装；.xapk 里带的 OBB 数据包推到 manifest 指定的位置。
+ * 所有文件先复制到临时目录再交给 adb，避开中文路径
  */
 export async function installApps(files: string[], ctx: OpContext): Promise<OperationResult> {
   if (files.length === 0) throw new OpError('请先选择要安装的文件')
@@ -59,7 +61,7 @@ export async function installApps(files: string[], ctx: OpContext): Promise<Oper
     const name = basename(file)
     const ext = extname(file).slice(1).toLowerCase()
     if (!INSTALL_EXTENSIONS.includes(ext) || !existsSync(file)) {
-      ctx.log('warn', `跳过 ${name}：不是 APK / APKS / XAPK 文件`)
+      ctx.log('warn', `跳过 ${name}：不是 APK / APKS / XAPK / AAB 文件`)
       failed.push(name)
       continue
     }
@@ -70,6 +72,18 @@ export async function installApps(files: string[], ctx: OpContext): Promise<Oper
       const copy = join(dir, `app_${i}.apk`)
       copyFileSync(file, copy)
       r = await adb(serial, ['install', '-r', copy], ctx, 300_000)
+    } else if (ext === 'aab') {
+      const out = join(dir, `bundle_${i}`)
+      await convertAab(file, out, serial, ctx)
+      const splits = pickSplits(listFiles(out), abiList)
+      if (splits.length === 0) {
+        ctx.log('error', `${name} 里没有找到可安装的分包`)
+        failed.push(name)
+        continue
+      }
+      ctx.log('info', `${name}：${splits.length} 个分包（${splits.map((s) => basename(s)).join('、')}）`)
+      ctx.log('warn', 'AAB 转换出的分包使用调试密钥签名，无法覆盖从应用商店安装的同一应用')
+      r = await adb(serial, ['install-multiple', '-r', ...splits.map((s) => join(out, s))], ctx, 600_000)
     } else {
       const out = join(dir, `bundle_${i}`)
       mkdirSync(out, { recursive: true })

@@ -26,7 +26,7 @@
 | 🩺 | **开机诊断** | 卡开机时选择看到的现象，读取槽位、解锁、系统更新合并等状态，推断可能的原因并直接给出修复按钮 |
 | 🛟 | **救援与恢复** | 一键撤销上一次刷写；刷回原厂 boot / init_boot（卸载 Root）；模块导致卡开机时禁用 / 启用 / 删除全部模块；备份 persist、基带等关键分区 |
 | 🔀 | **A/B 槽位切换** | 刷坏一个槽位时，切到另一个槽位往往能重新开机 |
-| 📦 | **安装应用** | 拖拽批量安装 `.apk`，支持 `.apks` / `.xapk` 分包（按 CPU 架构挑选分包，自动推送 OBB） |
+| 📦 | **安装应用** | 拖拽批量安装 `.apk`，支持 `.apks` / `.xapk` 分包（按 CPU 架构挑选分包，自动推送 OBB）和 `.aab`（用 bundletool 按手机配置转换成分包，内置 Java 运行时，无需自己安装 Java） |
 | 👥 | **应用管理** | 应用双开：一键把第三方应用克隆到分身空间；冻结 / 解冻应用；一键授予应用需要的 adb 权限（WRITE_SECURE_SETTINGS 等，免去手敲命令）；备份应用安装包（分包打成 `.apks`），已 Root 时可连同应用数据一起备份和恢复；预装应用：免 Root 卸载、冻结或恢复，系统必需组件不允许操作 |
 | 🖥️ | **投屏、截图、文件传输** | 内置 scrcpy 投屏，可用鼠标键盘操作手机，投屏窗口可以选择始终置顶；「独立屏幕」模式在手机上新建一块虚拟屏幕，电脑上用一个应用、手机上照常用别的，互不影响；一键截图；浏览手机存储，拖拽发送、点击接收文件 |
 | 📶 | **无线调试** | `adb pair` / `adb connect`，或者插着线一键切到无线 |
@@ -148,6 +148,9 @@ Root 之后卡开机、或者想卸载 Root 时用。前提是还能进 Fastboot
 
 ## 常见问题
 
+**安装 AAB 需要自己装 Java 吗？**
+不需要。安装包内置了精简的 Java 运行时，用来运行 bundletool 把 AAB 按手机配置转成分包 APK。转换出的分包使用调试密钥签名，如果手机上已经装了应用商店版本的同一应用，需要先卸载（会丢失应用数据，可先用「应用管理」备份）。
+
 **关闭窗口后程序去哪了？**
 点关闭按钮时可以选择「收起到系统托盘」：程序继续在后台运行，投屏和正在进行的操作都不会中断，点击屏幕右下角系统托盘里的图标即可重新打开；选择「关闭程序」才会真正退出。
 
@@ -177,11 +180,11 @@ KernelSU 系方案只支持 GKI 2.0 设备（Android 12 及以后出厂、内核
 
 ## 从源码构建
 
-需要 Windows 和 Node.js 22 或更高版本。
+需要 Windows、Node.js 22 或更高版本，以及 JDK 11+（`fetch-tools` 用其中的 `jlink` 生成 AAB 转换所需的内置 Java 运行时）。
 
 ```powershell
 npm install
-npm run fetch-tools   # 从官方地址下载 adb / fastboot 等工具到 resources\bin，并校验 sha256
+npm run fetch-tools   # 从官方地址下载 adb / fastboot 等工具到 resources\bin，并校验 sha256；同时生成精简 JRE
 npm run dev           # 开发模式，界面支持热更新
 ```
 
@@ -215,7 +218,8 @@ src/main/                 Electron 主进程
   ops/rescue.ts           撤销上一次刷写、刷回原厂镜像、禁用 / 启用 / 删除模块
   ops/bootdiag.ts         开机诊断的信息采集、取消 / 继续合并系统更新
   ops/backup.ts           关键分区备份
-  ops/install.ts          安装 APK / APKS / XAPK
+  ops/install.ts          安装 APK / APKS / XAPK / AAB
+  ops/aab.ts              AAB 转分包 APK（bundletool + 内置精简 JRE）
   ops/media.ts            投屏（scrcpy）、截图、文件传输
   ops/wireless.ts         无线调试
   ops/drivers.ts          驱动检查（设备管理器错误代码）
@@ -237,7 +241,7 @@ src/renderer/src/         React 界面
 src/shared/               主进程与界面共用的类型、内置方案目录、功能开关
   bootdiag.ts             开机诊断规则（纯函数）
 test/                     单元测试（vitest）
-scripts/fetch-tools.mjs   下载并校验第三方工具（含 qdl、scrcpy）
+scripts/fetch-tools.mjs   下载并校验第三方工具（含 qdl、scrcpy、bundletool）
 scripts/screenshots/      截图脚本与模拟数据
 catalog/                  远程方案目录示例与格式说明
 ```

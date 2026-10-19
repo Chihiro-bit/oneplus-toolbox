@@ -9,7 +9,7 @@ import { PageHeader, useGate, type PageProps } from './pages'
 import type { Toolbox } from './state'
 import { Card } from './ui'
 
-const INSTALL_EXTENSIONS = ['apk', 'apks', 'xapk']
+const INSTALL_EXTENSIONS = ['apk', 'apks', 'xapk', 'aab']
 const isInstallable = (p: string) => INSTALL_EXTENSIONS.includes(p.split('.').pop()?.toLowerCase() ?? '')
 const fileName = (p: string) => p.split(/[\/]/).pop() ?? p
 
@@ -64,7 +64,7 @@ export function ToolsPage({ tb, confirm }: PageProps) {
         >
           <PackagePlus size={26} />
           <p>
-            把 <code>.apk</code> / <code>.apks</code> / <code>.xapk</code> 拖到这里，可以一次拖多个
+            把 <code>.apk</code> / <code>.apks</code> / <code>.xapk</code> / <code>.aab</code> 拖到这里，可以一次拖多个
           </p>
           <button
             className="btn btn-secondary"
@@ -82,7 +82,11 @@ export function ToolsPage({ tb, confirm }: PageProps) {
                 <span className="file-name" title={f}>
                   {fileName(f)}
                 </span>
-                {!/\.apk$/i.test(f) && <span className="chip">分包</span>}
+                {/\.aab$/i.test(f) ? (
+                  <span className="chip">AAB</span>
+                ) : (
+                  !/\.apk$/i.test(f) && <span className="chip">分包</span>
+                )}
                 <button
                   className="icon-btn"
                   disabled={tb.run.running}
@@ -95,6 +99,9 @@ export function ToolsPage({ tb, confirm }: PageProps) {
             ))}
           </div>
         )}
+        <p className="muted small">
+          <code>.aab</code> 会按当前手机的配置转换成分包 APK（使用内置 Java 运行时，无需自己安装）；转换后使用调试密钥签名，不能覆盖从应用商店安装的同一应用。
+        </p>
         <div className="card-actions">
           <button
             className="btn btn-primary"

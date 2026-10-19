@@ -6,8 +6,8 @@
 
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { delimiter, join } from 'node:path'
 import sevenZip from '7zip-bin'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -54,6 +54,13 @@ const TOOLS = [
       'qdl-binary-windows-x64/libzstd.dll': 'qdl/libzstd.dll',
       'qdl-binary-windows-x64/zlib1.dll': 'qdl/zlib1.dll'
     }
+  },
+  {
+    // AAB 不能直接安装，需要用 bundletool 按手机配置转换成分包 APK；Java 运行时由下面的 jlink 一并生成
+    name: 'bundletool v1.18.3（AAB 转 APK）',
+    url: 'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar',
+    sha256: 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29',
+    file: 'bundletool/bundletool.jar'
   },
   {
     // 不带 scrcpy 自己的 adb.exe：启动时用 ADB 环境变量指向工具箱的 adb，避免两个版本的 adb server 互相踢
@@ -132,4 +139,45 @@ for (const tool of TOOLS) {
 // 7-Zip 来自 npm 包 7zip-bin，无需下载
 cpSync(sevenZip.path7za, join(BIN, '7za.exe'))
 console.log('✓ 7-Zip 21.07（7zip-bin）')
+
+// ───────────── 内置精简 Java 运行时（bundletool 需要 Java，用户不必自己装） ─────────────
+
+function findJlink() {
+  const exe = process.platform === 'win32' ? 'jlink.exe' : 'jlink'
+  const candidates = [
+    process.env.JAVA_HOME ? join(process.env.JAVA_HOME, 'bin', exe) : '',
+    ...(process.env.PATH ?? '').split(delimiter).filter(Boolean).map((d) => join(d, exe))
+  ]
+  const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files'
+  for (const parent of ['Java', 'Eclipse Adoptium', 'Microsoft']) {
+    try {
+      for (const name of readdirSync(join(programFiles, parent))) candidates.push(join(programFiles, parent, name, 'bin', exe))
+    } catch {
+      /* 目录不存在 */
+    }
+  }
+  return candidates.find((p) => p && existsSync(p))
+}
+
+const jlink = findJlink()
+if (!jlink) throw new Error('生成内置 Java 运行时需要 JDK 11 或更高版本（找不到 jlink）。请安装 JDK，或设置 JAVA_HOME 后重试')
+const jlinkMajor = Number(execFileSync(jlink, ['--version'], { encoding: 'utf8' }).trim().match(/^\d+/)?.[0] ?? 0)
+console.log(`✓ 精简 Java 运行时（jlink，JDK ${jlinkMajor}）`)
+execFileSync(
+  jlink,
+  [
+    // bundletool 需要 java.xml（DOM）和 jdk.zipfs（读取 jar 文件系统）
+    '--add-modules',
+    'java.base,java.logging,java.xml,jdk.zipfs',
+    '--strip-debug',
+    '--no-header-files',
+    '--no-man-pages',
+    // JDK 21 起改用 zip-N 写法，旧的 0/1/2 已弃用
+    `--compress=${jlinkMajor >= 21 ? 'zip-6' : '2'}`,
+    '--output',
+    join(BIN, 'jre')
+  ],
+  { stdio: 'inherit' }
+)
+
 console.log(`工具已就绪：${BIN}`)
