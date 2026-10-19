@@ -123,20 +123,22 @@ let mirror: ReturnType<typeof spawn> | null = null
  */
 export function mirrorArgs(opts: MirrorOptions, title: string): string[] {
   const vd = opts.display
+  let args: string[]
   if (!vd) {
-    const args = ['--window-title', title]
+    args = ['--window-title', title]
     if (opts.turnScreenOff) args.push('--turn-screen-off')
     if (opts.stayAwake) args.push('--stay-awake')
-    return args
+  } else {
+    if (vd.app !== undefined && !/^[\w.]+$/.test(vd.app)) throw new OpError('包名不合法')
+    const size = DISPLAY_SIZES[vd.size]
+    if (!size) throw new OpError('分辨率不合法')
+    // 软键盘弹在虚拟屏上，不打扰手机屏幕；手机屏幕要留给用户用，不关屏也不保持亮屏（锁屏不影响虚拟屏）
+    args = ['--window-title', `${title}（独立屏幕）`, size.arg ? `--new-display=${size.arg}` : '--new-display', '--display-ime-policy=local']
+    if (vd.app) args.push(`--start-app=${vd.app}`)
+    if (vd.keepApp) args.push('--no-vd-destroy-content')
+    if (vd.audioOnPhone) args.push('--no-audio')
   }
-  if (vd.app !== undefined && !/^[\w.]+$/.test(vd.app)) throw new OpError('包名不合法')
-  const size = DISPLAY_SIZES[vd.size]
-  if (!size) throw new OpError('分辨率不合法')
-  // 软键盘弹在虚拟屏上，不打扰手机屏幕；手机屏幕要留给用户用，不关屏也不保持亮屏（锁屏不影响虚拟屏）
-  const args = ['--window-title', `${title}（独立屏幕）`, size.arg ? `--new-display=${size.arg}` : '--new-display', '--display-ime-policy=local']
-  if (vd.app) args.push(`--start-app=${vd.app}`)
-  if (vd.keepApp) args.push('--no-vd-destroy-content')
-  if (vd.audioOnPhone) args.push('--no-audio')
+  if (opts.alwaysOnTop) args.push('--always-on-top')
   return args
 }
 

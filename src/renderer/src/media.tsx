@@ -19,6 +19,7 @@ export function MirrorCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolea
   const [separate, setSeparate] = useState(false)
   const [turnScreenOff, setTurnScreenOff] = useState(false)
   const [stayAwake, setStayAwake] = useState(true)
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false)
   const [apps, setApps] = useState<AppEntry[] | null>(null)
   const [app, setApp] = useState('')
   const [size, setSize] = useState<DisplaySize>('1920x1080')
@@ -37,6 +38,7 @@ export function MirrorCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolea
     const r = await window.toolbox.startMirror({
       turnScreenOff,
       stayAwake,
+      alwaysOnTop,
       display: separate ? { app: app || undefined, size, keepApp, audioOnPhone } : undefined
     })
     setMsg({ ok: r.ok, text: r.message })
@@ -106,6 +108,10 @@ export function MirrorCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolea
           </label>
         </>
       )}
+      <label className="check">
+        <input type="checkbox" checked={alwaysOnTop} onChange={(e) => setAlwaysOnTop(e.target.checked)} />
+        <span>投屏窗口始终置顶（不会被其它窗口挡住）</span>
+      </label>
       <div className="btn-row">
         <button className="btn btn-primary" disabled={!!mirrorBlocked} title={mirrorBlocked} onClick={start}>
           <MonitorSmartphone size={15} /> {separate ? '打开独立屏幕' : '开始投屏'}

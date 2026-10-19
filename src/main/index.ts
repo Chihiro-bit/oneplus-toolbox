@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
 import type { DeviceInfo, LogEntry, LogLevel, MirrorOptions, OperationRequest, OperationResult, Settings } from '@shared/types'
 import { getCatalog } from './catalog'
 import { describe, detect, selectDevice } from './device'
@@ -12,8 +12,13 @@ import { loadSettings, saveSettings } from './settings'
 import { checkUpdate, downloadUpdate, installUpdate } from './update'
 
 let win: BrowserWindow | null = null
+let tray: Tray | null = null
 let current: DeviceInfo = { mode: 'none' }
 let busy: AbortController | null = null
+/** 已经确认退出，关闭窗口时不再拦截 */
+let quitting = false
+/** 关闭确认框已经打开，避免重复弹窗 */
+let closePrompt = false
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -252,6 +257,69 @@ function describeRequest(req: OperationRequest): string {
 
 // ───────────── 窗口 ─────────────
 
+/** 托盘图标：打包后在 resources/icon.png，开发时用 build/icon.png */
+function appIcon(): Electron.NativeImage {
+  const file = app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(app.getAppPath(), 'build', 'icon.png')
+  return nativeImage.createFromPath(file)
+}
+
+function showWindow(): void {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+function quitApp(): void {
+  quitting = true
+  app.quit()
+}
+
+/** 收起到系统托盘；没有图标可用时退回最小化，免得窗口消失后找不回来 */
+function minimizeToTray(): void {
+  if (!win) return
+  if (!tray || tray.isDestroyed()) {
+    const icon = appIcon()
+    if (icon.isEmpty()) {
+      win.minimize()
+      return
+    }
+    tray = new Tray(icon.resize({ width: 16, height: 16 }))
+    tray.setToolTip('一加工具箱')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: '显示主界面', click: showWindow },
+        { type: 'separator' },
+        { label: '退出', click: quitApp }
+      ])
+    )
+    tray.on('click', showWindow)
+    tray.on('double-click', showWindow)
+  }
+  win.hide()
+}
+
+async function askBeforeClose(): Promise<void> {
+  if (!win || closePrompt) return
+  closePrompt = true
+  try {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: '关闭一加工具箱',
+      message: '要关闭程序，还是收起到系统托盘？',
+      detail: '收起到系统托盘后程序继续在后台运行，点击托盘里的图标可以重新打开。',
+      buttons: ['收起到系统托盘', '关闭程序', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true
+    })
+    if (response === 0) minimizeToTray()
+    else if (response === 1) quitApp()
+  } finally {
+    closePrompt = false
+  }
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1120,
@@ -273,6 +341,16 @@ function createWindow(): void {
     }
   })
   win.once('ready-to-show', () => win?.show())
+  // 点关闭按钮时先询问：关闭程序，还是收起到系统托盘
+  win.on('close', (e) => {
+    if (quitting) return
+    e.preventDefault()
+    void askBeforeClose()
+  })
+  // 系统关机 / 注销时不再拦截
+  win.on('session-end', () => {
+    quitting = true
+  })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url)
     return { action: 'deny' }
@@ -297,10 +375,16 @@ app.whenReady().then(() => {
   poll()
 })
 
+app.on('before-quit', () => {
+  quitting = true
+})
+
 app.on('window-all-closed', () => app.quit())
 
 // 退出时关闭 adb server，避免残留进程占用 5037 端口
 app.on('will-quit', () => {
+  tray?.destroy()
+  tray = null
   stopMirror()
   spawnSync(tools.adb, ['kill-server'], { windowsHide: true, timeout: 3000 })
 })

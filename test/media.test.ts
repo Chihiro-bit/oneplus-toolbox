@@ -22,9 +22,14 @@ describe('parseStat', () => {
 })
 
 describe('mirrorArgs', () => {
-  const base = { turnScreenOff: false, stayAwake: true }
+  const base = { turnScreenOff: false, stayAwake: true, alwaysOnTop: false }
   it('镜像手机屏幕', () => {
     expect(mirrorArgs({ ...base, turnScreenOff: true }, 'PJZ110')).toEqual(['--window-title', 'PJZ110', '--turn-screen-off', '--stay-awake'])
+  })
+  it('置顶：两种模式都加上 --always-on-top', () => {
+    expect(mirrorArgs({ ...base, alwaysOnTop: true }, 'PJZ110')).toContain('--always-on-top')
+    const args = mirrorArgs({ ...base, alwaysOnTop: true, display: { size: 'auto', keepApp: false, audioOnPhone: false } }, 'PJZ110')
+    expect(args).toContain('--always-on-top')
   })
   it('独立屏幕：指定应用和分辨率，不保持亮屏', () => {
     const args = mirrorArgs({ ...base, display: { app: 'tv.danmaku.bili', size: '1920x1080', keepApp: true, audioOnPhone: true } }, 'PJZ110')

@@ -201,6 +201,8 @@ export const DISPLAY_SIZES: Record<DisplaySize, { label: string; arg?: string }>
 export interface MirrorOptions {
   turnScreenOff: boolean
   stayAwake: boolean
+  /** 投屏窗口始终显示在其它窗口上面 */
+  alwaysOnTop: boolean
   /**
    * 投到手机上新建的虚拟屏幕，而不是镜像手机屏幕：电脑上和手机上各用各的应用。
    * app 为空时显示系统的副屏桌面
