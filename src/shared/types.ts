@@ -429,8 +429,15 @@ export interface UpdateInfo {
   error?: string
 }
 
+/** 关闭窗口时选择：收起到系统托盘 / 直接退出 / 取消 */
+export type CloseAction = 'tray' | 'quit' | 'cancel'
+
 export interface ToolboxApi {
   getDevice(): Promise<DeviceInfo>
+  /** 主进程请求关闭窗口时触发，界面应弹出自己的确认框 */
+  onCloseRequest(cb: () => void): () => void
+  /** 回应关闭请求 */
+  resolveClose(action: CloseAction): Promise<void>
   /** 连着多台设备时，选择要操作的那一台 */
   selectDevice(serial: string): Promise<void>
   onDevice(cb: (d: DeviceInfo) => void): () => void

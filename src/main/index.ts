@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
-import type { DeviceInfo, LogEntry, LogLevel, MirrorOptions, OperationRequest, OperationResult, Settings } from '@shared/types'
+import type { CloseAction, DeviceInfo, LogEntry, LogLevel, MirrorOptions, OperationRequest, OperationResult, Settings } from '@shared/types'
 import { getCatalog } from './catalog'
 import { describe, detect, selectDevice } from './device'
 import { CancelledError, missingTools, tools } from './exec'
@@ -19,6 +19,8 @@ let busy: AbortController | null = null
 let quitting = false
 /** 关闭确认框已经打开，避免重复弹窗 */
 let closePrompt = false
+/** 界面已经加载完成，可以弹出界面里的关闭确认框 */
+let rendererReady = false
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -167,6 +169,12 @@ ipcMain.handle('shell:openExternal', (_e, url: string) => {
 ipcMain.handle('shell:openLogDir', () => shell.openPath(logDir()))
 ipcMain.handle('mirror:start', (_e, opts: MirrorOptions) => startMirror(opts, log))
 ipcMain.handle('history:get', (_e, serial: string) => history(serial))
+ipcMain.handle('app:close', (_e, action: CloseAction) => {
+  if (!closePrompt) return
+  closePrompt = false
+  if (action === 'tray') minimizeToTray()
+  else if (action === 'quit') quitApp()
+})
 
 function describeRequest(req: OperationRequest): string {
   switch (req.kind) {
@@ -299,25 +307,16 @@ function minimizeToTray(): void {
   win.hide()
 }
 
-async function askBeforeClose(): Promise<void> {
-  if (!win || closePrompt) return
-  closePrompt = true
-  try {
-    const { response } = await dialog.showMessageBox(win, {
-      type: 'question',
-      title: '关闭一加工具箱',
-      message: '要关闭程序，还是收起到系统托盘？',
-      detail: '收起到系统托盘后程序继续在后台运行，点击托盘里的图标可以重新打开。',
-      buttons: ['收起到系统托盘', '关闭程序', '取消'],
-      defaultId: 0,
-      cancelId: 2,
-      noLink: true
-    })
-    if (response === 0) minimizeToTray()
-    else if (response === 1) quitApp()
-  } finally {
-    closePrompt = false
+/** 关闭按钮交给界面自己的确认框处理，和项目里其它对话框保持一致 */
+function requestClose(): void {
+  if (!win) return
+  if (closePrompt) {
+    showWindow()
+    return
   }
+  closePrompt = true
+  showWindow()
+  send('app:close-request', null)
 }
 
 function createWindow(): void {
@@ -341,11 +340,11 @@ function createWindow(): void {
     }
   })
   win.once('ready-to-show', () => win?.show())
-  // 点关闭按钮时先询问：关闭程序，还是收起到系统托盘
+  // 点关闭按钮时先询问：关闭程序，还是收起到系统托盘（界面还没加载好时直接关闭）
   win.on('close', (e) => {
-    if (quitting) return
+    if (quitting || !rendererReady) return
     e.preventDefault()
-    void askBeforeClose()
+    requestClose()
   })
   // 系统关机 / 注销时不再拦截
   win.on('session-end', () => {
@@ -364,6 +363,7 @@ function createWindow(): void {
   else win.loadFile(join(__dirname, '../renderer/index.html'))
 
   win.webContents.once('did-finish-load', () => {
+    rendererReady = true
     const missing = missingTools()
     if (missing.length) log('error', `缺少工具：${missing.join(', ')}。开发环境请先运行 npm run fetch-tools`)
   })

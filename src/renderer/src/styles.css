@@ -1327,6 +1327,37 @@ code {
   min-width: 220px;
 }
 
+.modal-close {
+  width: min(500px, calc(100vw - 32px));
+  text-align: center;
+  padding: 26px 28px 22px;
+}
+.close-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.modal-close h2 {
+  font-size: 19px;
+}
+.modal-close .modal-intro {
+  margin: 10px 0 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  text-align: left;
+  line-height: 1.6;
+}
+.modal-close footer {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 /* ───────── 9008 救砖页 ───────── */
 
 .file-list {

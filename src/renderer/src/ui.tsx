@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, FolderOpen, Loader2, ShieldAlert, Trash2, X, XCircle } from 'lucide-react'
-import type { DeviceInfo, DeviceMode, LogEntry } from '@shared/types'
+import { AlertTriangle, CheckCircle2, ChevronDown, FolderOpen, Loader2, Minimize2, Power, ShieldAlert, Trash2, X, XCircle } from 'lucide-react'
+import type { CloseAction, DeviceInfo, DeviceMode, LogEntry } from '@shared/types'
 import { MODE_LABEL, randomCode, type RunState } from './state'
 
 export function ModeBadge({ mode }: { mode: DeviceMode }) {
@@ -137,6 +137,42 @@ export function ConfirmDialog({ spec, onClose }: { spec: ConfirmSpec | null; onC
             }}
           >
             {spec.confirmText}
+          </button>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+// ───────────── 关闭确认 ─────────────
+
+/** 点关闭按钮时由主进程通知弹出，样式与项目里的其它对话框一致 */
+export function CloseDialog({ onClose }: { onClose: (action: CloseAction) => void }) {
+  return (
+    <div className="modal-backdrop" onMouseDown={() => onClose('cancel')}>
+      <div
+        className="modal modal-close"
+        onMouseDown={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="close-title"
+      >
+        <div className="close-icon">
+          <Power size={24} />
+        </div>
+        <h2 id="close-title">要关闭一加工具箱吗？</h2>
+        <p className="modal-intro">
+          选择「收起到系统托盘」后，程序会继续在后台运行，投屏和正在进行的操作都不会中断；点击屏幕右下角托盘里的图标即可重新打开。
+        </p>
+        <footer>
+          <button className="btn btn-ghost" onClick={() => onClose('cancel')}>
+            取消
+          </button>
+          <button className="btn btn-secondary" onClick={() => onClose('quit')}>
+            关闭程序
+          </button>
+          <button className="btn btn-primary" onClick={() => onClose('tray')}>
+            <Minimize2 size={15} /> 收起到系统托盘
           </button>
         </footer>
       </div>

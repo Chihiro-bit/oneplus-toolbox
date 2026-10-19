@@ -11,7 +11,7 @@ import { RootPage } from './root'
 import { SettingsPage } from './settings'
 import { isOnePlus, MODE_LABEL, useToolbox } from './state'
 import { ToolsPage } from './tools'
-import { BrandWarning, ConfirmDialog, LogPanel, ModeBadge, RunBanner, type ConfirmSpec } from './ui'
+import { BrandWarning, CloseDialog, ConfirmDialog, LogPanel, ModeBadge, RunBanner, type ConfirmSpec } from './ui'
 
 export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'diagnose' | 'rescue' | 'slot' | 'edl' | 'apps' | 'tools' | 'settings'
 
@@ -32,11 +32,15 @@ export default function App() {
   const tb = useToolbox()
   const [page, setPage] = useState<PageId>('overview')
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null)
+  const [closeAsk, setCloseAsk] = useState(false)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
   // 本次运行中已确认过警告的设备，不再重复弹出
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set())
   const { device } = tb
   const warnDevice = device.serial && isOnePlus(device) === false && !acknowledged.has(device.serial) ? device : null
+
+  // 主进程拦截关闭按钮后，由界面弹出自己的确认框
+  useEffect(() => window.toolbox.onCloseRequest(() => setCloseAsk(true)), [])
 
   // 配置了更新仓库时，启动后静默检查一次
   useEffect(() => {
@@ -126,6 +130,14 @@ export default function App() {
 
       <ConfirmDialog spec={confirm} onClose={() => setConfirm(null)} />
       <BrandWarning device={warnDevice} onClose={() => setAcknowledged((s) => new Set(s).add(device.serial!))} />
+      {closeAsk && (
+        <CloseDialog
+          onClose={(action) => {
+            setCloseAsk(false)
+            void window.toolbox.resolveClose(action)
+          }}
+        />
+      )}
     </div>
   )
 }

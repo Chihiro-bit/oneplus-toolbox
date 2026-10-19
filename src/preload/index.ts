@@ -9,6 +9,8 @@ function subscribe<T>(channel: string, cb: (v: T) => void): () => void {
 
 const api: ToolboxApi = {
   getDevice: () => ipcRenderer.invoke('device:get'),
+  onCloseRequest: (cb) => subscribe('app:close-request', cb),
+  resolveClose: (action) => ipcRenderer.invoke('app:close', action),
   selectDevice: (serial) => ipcRenderer.invoke('device:select', serial),
   onDevice: (cb) => subscribe<DeviceInfo>('device', cb),
   onLog: (cb) => subscribe<LogEntry>('log', cb),
