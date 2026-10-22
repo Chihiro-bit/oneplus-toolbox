@@ -3,7 +3,11 @@ import { dirname, join } from 'node:path'
 import { app } from 'electron'
 import type { Settings } from '@shared/types'
 
-const DEFAULTS: Settings = { catalogUrl: '', updateRepo: __DEFAULT_UPDATE_REPO__ }
+const DEFAULTS: Settings = { catalogUrl: '', updateRepo: __DEFAULT_UPDATE_REPO__, closeBehavior: 'ask' }
+
+export function normalizeCloseBehavior(value: unknown): NonNullable<Settings['closeBehavior']> {
+  return value === 'tray' || value === 'quit' ? value : 'ask'
+}
 
 function file(): string {
   return join(app.getPath('userData'), 'settings.json')
@@ -11,7 +15,8 @@ function file(): string {
 
 export function loadSettings(): Settings {
   try {
-    return { ...DEFAULTS, ...JSON.parse(readFileSync(file(), 'utf8')) }
+    const saved = JSON.parse(readFileSync(file(), 'utf8'))
+    return { ...DEFAULTS, ...saved, closeBehavior: normalizeCloseBehavior(saved.closeBehavior) }
   } catch {
     return { ...DEFAULTS }
   }
@@ -19,6 +24,7 @@ export function loadSettings(): Settings {
 
 export function saveSettings(s: Settings): Settings {
   const clean: Settings = {
+    closeBehavior: normalizeCloseBehavior(s.closeBehavior),
     catalogUrl: s.catalogUrl.trim(),
     updateRepo: s.updateRepo.trim().replace(/^https:\/\/github\.com\//, '').replace(/\/$/, '')
   }

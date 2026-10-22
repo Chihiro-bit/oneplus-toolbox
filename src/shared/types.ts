@@ -364,7 +364,7 @@ export type OperationRequest =
   | { kind: 'listApps' }
   | { kind: 'cloneApp'; package: string; enable: boolean }
   | { kind: 'listSystemApps' }
-  | { kind: 'debloat'; package: string; remove: boolean }
+  | { kind: 'debloat'; package: string; remove: boolean; root?: boolean }
   | { kind: 'installPlay'; apk: string }
   | { kind: 'otaUpdates'; disable: boolean }
   | { kind: 'shizuku'; action: ShizukuAction }
@@ -413,6 +413,8 @@ export interface OperationResult {
 }
 
 export interface Settings {
+  /** 点击关闭按钮时的行为，旧配置默认询问 */
+  closeBehavior?: 'ask' | 'tray' | 'quit'
   /** 远程方案目录（只含数据：URL + sha256），留空则只用内置目录 */
   catalogUrl: string
   /** 检查新版本用的 GitHub 仓库，形如 owner/repo */
@@ -437,7 +439,7 @@ export interface ToolboxApi {
   /** 主进程请求关闭窗口时触发，界面应弹出自己的确认框 */
   onCloseRequest(cb: () => void): () => void
   /** 回应关闭请求 */
-  resolveClose(action: CloseAction): Promise<void>
+  resolveClose(action: CloseAction, remember?: boolean): Promise<void>
   /** 连着多台设备时，选择要操作的那一台 */
   selectDevice(serial: string): Promise<void>
   onDevice(cb: (d: DeviceInfo) => void): () => void

@@ -73,21 +73,35 @@ export interface ConfirmSpec {
   intro?: ReactNode
   checks: string[]
   confirmText: string
+  confirmationPhrase?: string
+  waitSeconds?: number
   onConfirm: () => void
 }
 
 export function ConfirmDialog({ spec, onClose }: { spec: ConfirmSpec | null; onClose: () => void }) {
   const [checked, setChecked] = useState<boolean[]>([])
   const [input, setInput] = useState('')
+  const [phrase, setPhrase] = useState('')
+  const [waiting, setWaiting] = useState<{ spec: ConfirmSpec; until: number; left: number } | null>(null)
   const code = useMemo(() => randomCode(), [spec])
 
   useEffect(() => {
     setChecked(spec ? spec.checks.map(() => false) : [])
     setInput('')
+    setPhrase('')
+    if (!spec) { setWaiting(null); return }
+    const until = Date.now() + (spec.waitSeconds ?? 0) * 1000
+    const tick = () => setWaiting({ spec, until, left: Math.max(0, Math.ceil((until - Date.now()) / 1000)) })
+    tick()
+    const timer = setInterval(tick, 200)
+    return () => clearInterval(timer)
   }, [spec])
 
   if (!spec) return null
-  const ready = checked.every(Boolean) && (!spec.danger || input.trim().toUpperCase() === code)
+  const left = waiting?.spec === spec ? waiting.left : (spec.waitSeconds ?? 0)
+  const ready = checked.length === spec.checks.length && checked.every(Boolean) && left === 0
+    && (!spec.danger || input.trim().toUpperCase() === code)
+    && (!spec.confirmationPhrase || phrase === spec.confirmationPhrase)
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -124,6 +138,12 @@ export function ConfirmDialog({ spec, onClose }: { spec: ConfirmSpec | null; onC
             />
           </div>
         )}
+        {spec.confirmationPhrase && (
+          <label className="code-confirm">
+            <span>请输入「{spec.confirmationPhrase}」</span>
+            <input value={phrase} onChange={(e) => setPhrase(e.target.value)} spellCheck={false} autoComplete="off" />
+          </label>
+        )}
         <footer>
           <button className="btn btn-ghost" onClick={onClose}>
             取消
@@ -136,7 +156,7 @@ export function ConfirmDialog({ spec, onClose }: { spec: ConfirmSpec | null; onC
               spec.onConfirm()
             }}
           >
-            {spec.confirmText}
+            {left > 0 ? `请阅读风险提示（${left} 秒）` : spec.confirmText}
           </button>
         </footer>
       </div>
@@ -147,9 +167,19 @@ export function ConfirmDialog({ spec, onClose }: { spec: ConfirmSpec | null; onC
 // ───────────── 关闭确认 ─────────────
 
 /** 点关闭按钮时由主进程通知弹出，样式与项目里的其它对话框一致 */
-export function CloseDialog({ onClose }: { onClose: (action: CloseAction) => void }) {
+export function CloseDialog({ onClose }: { onClose: (action: CloseAction, remember: boolean) => Promise<void> }) {
+  const [remember, setRemember] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const choose = async (action: CloseAction) => {
+    if (saving) return
+    setSaving(true)
+    try { await onClose(action, action !== 'cancel' && remember) }
+    catch { setError('无法保存关闭设置，请重试或取消勾选“记住本次操作”。') }
+    finally { setSaving(false) }
+  }
   return (
-    <div className="modal-backdrop" onMouseDown={() => onClose('cancel')}>
+    <div className="modal-backdrop" onMouseDown={() => choose('cancel')}>
       <div
         className="modal modal-close"
         onMouseDown={(e) => e.stopPropagation()}
@@ -164,14 +194,19 @@ export function CloseDialog({ onClose }: { onClose: (action: CloseAction) => voi
         <p className="modal-intro">
           选择「收起到系统托盘」后，程序会继续在后台运行，投屏和正在进行的操作都不会中断；点击屏幕右下角托盘里的图标即可重新打开。
         </p>
+        <label className="check">
+          <input type="checkbox" checked={remember} disabled={saving} onChange={(e) => setRemember(e.target.checked)} />
+          <span>记住本次操作（可在设置中更改）</span>
+        </label>
+        {error && <p className="error-text small" role="alert">{error}</p>}
         <footer>
-          <button className="btn btn-ghost" onClick={() => onClose('cancel')}>
+          <button className="btn btn-ghost" disabled={saving} onClick={() => choose('cancel')}>
             取消
           </button>
-          <button className="btn btn-secondary" onClick={() => onClose('quit')}>
+          <button className="btn btn-secondary" disabled={saving} onClick={() => choose('quit')}>
             关闭程序
           </button>
-          <button className="btn btn-primary" onClick={() => onClose('tray')}>
+          <button className="btn btn-primary" disabled={saving} onClick={() => choose('tray')}>
             <Minimize2 size={15} /> 收起到系统托盘
           </button>
         </footer>
@@ -243,8 +278,11 @@ export function LogPanel({ logs, onClear }: { logs: LogEntry[]; onClear: () => v
       <div className="logbar" onClick={() => setOpen((o) => !o)}>
         <ChevronDown size={15} className="chev" />
         <strong>日志</strong>
-        {!open && last && <span className={`logbar-last lvl-${last.level}`}>{last.text}</span>}
+        {!open && last && <span className={`logbar-last lvl-${last.level}`} title={last.text}>{last.text}</span>}
         <span className="spacer" />
+        <button className="icon-btn" onClick={(e) => { e.stopPropagation(); window.toolbox.openLogDir() }} aria-label="打开完整日志文件夹" title="打开完整日志文件夹（保留 30 天）">
+          <FolderOpen size={15} />
+        </button>
         {open && (
           <button
             className="icon-btn"
@@ -252,8 +290,8 @@ export function LogPanel({ logs, onClear }: { logs: LogEntry[]; onClear: () => v
               e.stopPropagation()
               onClear()
             }}
-            aria-label="清空日志"
-            title="清空日志"
+            aria-label="清空面板日志"
+            title="仅清空面板，保留日志文件"
           >
             <Trash2 size={14} />
           </button>
@@ -261,6 +299,7 @@ export function LogPanel({ logs, onClear }: { logs: LogEntry[]; onClear: () => v
       </div>
       {open && (
         <div className="logbody" ref={ref}>
+          <div className="muted">面板显示最近 2000 条日志；完整操作日志保存在日志文件夹中，保留 30 天。</div>
           {logs.length === 0 && <div className="log-empty">暂无日志</div>}
           {logs.map((l, i) => (
             <div key={i} className={`logline lvl-${l.level}`}>

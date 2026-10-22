@@ -132,9 +132,9 @@ export default function App() {
       <BrandWarning device={warnDevice} onClose={() => setAcknowledged((s) => new Set(s).add(device.serial!))} />
       {closeAsk && (
         <CloseDialog
-          onClose={(action) => {
+          onClose={async (action, remember) => {
+            await window.toolbox.resolveClose(action, remember)
             setCloseAsk(false)
-            void window.toolbox.resolveClose(action)
           }}
         />
       )}

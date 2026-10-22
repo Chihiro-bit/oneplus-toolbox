@@ -169,8 +169,10 @@ ipcMain.handle('shell:openExternal', (_e, url: string) => {
 ipcMain.handle('shell:openLogDir', () => shell.openPath(logDir()))
 ipcMain.handle('mirror:start', (_e, opts: MirrorOptions) => startMirror(opts, log))
 ipcMain.handle('history:get', (_e, serial: string) => history(serial))
-ipcMain.handle('app:close', (_e, action: CloseAction) => {
+ipcMain.handle('app:close', (_e, action: CloseAction, remember?: boolean) => {
   if (!closePrompt) return
+  if (action !== 'tray' && action !== 'quit' && action !== 'cancel') throw new Error('无效的关闭操作')
+  if (remember === true && action !== 'cancel') saveSettings({ ...loadSettings(), closeBehavior: action })
   closePrompt = false
   if (action === 'tray') minimizeToTray()
   else if (action === 'quit') quitApp()
@@ -223,7 +225,7 @@ function describeRequest(req: OperationRequest): string {
     case 'listSystemApps':
       return '读取系统应用列表'
     case 'debloat':
-      return req.remove ? `卸载预装应用 ${req.package}` : `恢复预装应用 ${req.package}`
+      return req.remove ? `${req.root ? 'Root 强制' : ''}卸载预装应用 ${req.package}` : `恢复预装应用 ${req.package}`
     case 'cloneApp':
       return req.enable ? `双开 ${req.package}` : `移除双开 ${req.package}`
     case 'installPlay':
@@ -310,6 +312,9 @@ function minimizeToTray(): void {
 /** 关闭按钮交给界面自己的确认框处理，和项目里其它对话框保持一致 */
 function requestClose(): void {
   if (!win) return
+  const behavior = loadSettings().closeBehavior
+  if (behavior === 'tray') { minimizeToTray(); return }
+  if (behavior === 'quit') { quitApp(); return }
   if (closePrompt) {
     showWindow()
     return

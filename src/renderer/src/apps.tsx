@@ -48,24 +48,27 @@ export function AppsPage({ tb, confirm }: PageProps) {
     if (r.ok) patch(a.package, { cloned: !a.cloned })
   }
 
-  const toggleSystem = (a: AppEntry) => {
+  const toggleSystem = (a: AppEntry, root = false) => {
     const run = async () => {
       setPending(a.package)
-      const r = await tb.start(a.removed ? `恢复：${a.label}` : `卸载：${a.label}`, { kind: 'debloat', package: a.package, remove: !a.removed })
+      const r = await tb.start(a.removed ? `恢复：${a.label}` : `${root ? 'Root 强制' : ''}卸载：${a.label}`, { kind: 'debloat', package: a.package, remove: !a.removed, root })
       setPending(null)
       if (r.ok) patch(a.package, { removed: !a.removed })
     }
     if (a.removed) return run()
     confirm({
-      title: `卸载 ${a.label}`,
+      title: `${root ? 'Root 强制' : ''}卸载 ${a.label}`,
       intro: (
         <>
           对当前用户卸载 <code>{a.package}</code>（<code>pm uninstall --user 0</code>）。APK 仍保留在系统分区，随时可以在这里恢复，恢复出厂设置也会让它回来。
           卸掉其它应用依赖的组件，可能导致相关功能失灵甚至反复崩溃。
+          {root && <p>将请求手机上的 Root 授权后执行卸载，仅移除当前用户的应用，保留系统 APK 和应用数据。Root 也可能无法绕过厂商限制，失败时请查看日志。</p>}
         </>
       ),
       checks: ['我确认知道这个应用是做什么的，卸载它不会影响我需要的功能'],
       confirmText: '卸载',
+      confirmationPhrase: '我已充分了解卸载风险，并确认卸载该应用不会影响系统及所需功能',
+      waitSeconds: 10,
       onConfirm: run
     })
   }
@@ -183,6 +186,7 @@ export function AppsPage({ tb, confirm }: PageProps) {
         <Callout tone="warn">
           卸载和冻结都只针对当前用户，不需要 Root，随时可以恢复。但工具箱不知道哪些预装应用停掉后会影响其它功能，请只处理你确认用不到的。
           开机、解锁、权限管理等必需组件已被锁定，不能卸载或冻结。
+          普通卸载失败时，可尝试 Root 强制卸载，需要在手机上授予 Root 权限。每次卸载均需等待 10 秒并输入确认语句。
         </Callout>
       )}
 
@@ -274,6 +278,13 @@ export function AppsPage({ tb, confirm }: PageProps) {
                   {tab === 'system' && (
                     <>
                       {!a.removed && freezeButton(a)}
+                      {!a.removed && (
+                        <button className="btn btn-ghost" disabled={gate.disabled || !rooted || a.protected}
+                          title={a.protected ? '系统运行必需的组件，不允许卸载' : !rooted ? '需要手机已 Root' : '使用 Root 权限对当前用户卸载'}
+                          onClick={() => toggleSystem(a, true)}>
+                          Root 强制卸载
+                        </button>
+                      )}
                       <button
                         className={`btn ${a.removed ? 'btn-secondary' : 'btn-ghost'}`}
                         disabled={gate.disabled || (a.protected && !a.removed)}

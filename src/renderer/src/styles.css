@@ -880,6 +880,11 @@ code {
   flex-shrink: 0;
   opacity: 0.7;
 }
+.logline > span {
+  min-width: 0;
+  flex: 1;
+  user-select: text;
+}
 .log-empty {
   color: var(--muted);
   padding: 12px 0;
@@ -1356,6 +1361,10 @@ code {
 .modal-close footer {
   justify-content: center;
   flex-wrap: wrap;
+}
+.modal-close .check {
+  margin-top: 14px;
+  text-align: left;
 }
 
 /* ───────── 9008 救砖页 ───────── */

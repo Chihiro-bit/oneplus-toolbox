@@ -45,6 +45,20 @@ export function SettingsPage({ tb }: PageProps) {
 
       <div className="stack">
         <Card>
+          <h3 className="card-title">窗口关闭行为</h3>
+          <p className="muted small">点击窗口右上角关闭按钮时，按以下方式处理。选择“每次询问”可重新显示关闭确认弹窗。</p>
+          <label className="field-label" htmlFor="closeBehavior">关闭按钮操作</label>
+          <select className="text-input" id="closeBehavior" value={settings.closeBehavior ?? 'ask'} onChange={(e) => setSettings({ ...settings, closeBehavior: e.target.value as Settings['closeBehavior'] })}>
+            <option value="ask">每次询问</option>
+            <option value="tray">收起到系统托盘</option>
+            <option value="quit">直接退出程序</option>
+          </select>
+          <div className="card-actions">
+            <button className="btn btn-primary" onClick={save}><Save size={15} /> 保存设置</button>
+            {saveMsg && <span className={`small ${saveMsg.ok ? 'ok-text' : 'error-text'}`}>{saveMsg.text}</span>}
+          </div>
+        </Card>
+        <Card>
           <h3 className="card-title">Root 方案目录</h3>
           <p className="muted small">
             留空时只使用内置目录。可以填一个自己维护的 <code>catalog.json</code> 地址（例如 GitHub 上的 raw 链接），用来更新各方案的

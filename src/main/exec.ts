@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { app } from 'electron'
 import type { LogLevel } from '@shared/types'
 
@@ -64,34 +65,47 @@ export function exec(file: string, args: string[], opts: ExecOptions = {}): Prom
   const { signal, timeoutMs = 60_000, log, echoOutput = true } = opts
   if (signal?.aborted) return Promise.reject(new CancelledError())
   log?.('cmd', `${basename(file, '.exe')} ${args.map(quoteForLog).join(' ')}`)
+  const started = Date.now()
 
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, { windowsHide: true })
     let stdout = ''
     let stderr = ''
     let all = ''
-    let pending = ''
+    const streams = [
+      { decoder: new StringDecoder('utf8'), pending: '' },
+      { decoder: new StringDecoder('utf8'), pending: '' }
+    ]
     let settled = false
 
-    const flush = (final = false): void => {
+    const flush = (stream: typeof streams[number], final = false): void => {
       if (!log || !echoOutput) return
-      const parts = pending.split(/\r?\n|\r/)
-      pending = final ? '' : parts.pop() ?? ''
+      const parts = stream.pending.split(/\r\n|[\r\n]/)
+      stream.pending = final ? '' : parts.pop() ?? ''
       for (const line of parts) if (line.trim()) log('info', line.trimEnd())
     }
-    const onData = (isErr: boolean) => (buf: Buffer): void => {
-      const s = buf.toString('utf8')
+    const collect = (isErr: boolean, s: string): void => {
       if (isErr) stderr += s
       else stdout += s
       all += s
-      pending += s
-      flush()
+      if (echoOutput) {
+        const stream = streams[Number(isErr)]
+        stream.pending += s
+        flush(stream)
+      }
+    }
+    const onData = (isErr: boolean) => (buf: Buffer): void => {
+      if (!settled) collect(isErr, streams[Number(isErr)].decoder.write(buf))
     }
     child.stdout.on('data', onData(false))
     child.stderr.on('data', onData(true))
 
     const finish = (fn: () => void): void => {
       if (settled) return
+      for (const [i, stream] of streams.entries()) {
+        collect(i === 1, stream.decoder.end())
+        flush(stream, true)
+      }
       settled = true
       clearTimeout(timer)
       signal?.removeEventListener('abort', onAbort)
@@ -99,18 +113,29 @@ export function exec(file: string, args: string[], opts: ExecOptions = {}): Prom
     }
     const onAbort = (): void => {
       child.kill()
-      finish(() => reject(new CancelledError()))
+      finish(() => {
+        log?.('warn', `命令已取消（耗时 ${Date.now() - started} ms）`)
+        reject(new CancelledError())
+      })
     }
     signal?.addEventListener('abort', onAbort)
     const timer = setTimeout(() => {
       child.kill()
-      finish(() => resolve({ code: -1, stdout, stderr: stderr + '\n[超时]', all: all + '\n[超时]' }))
+      finish(() => {
+        log?.('error', `命令超时（限制 ${timeoutMs} ms，耗时 ${Date.now() - started} ms）`)
+        resolve({ code: -1, stdout, stderr: stderr + '\n[超时]', all: all + '\n[超时]' })
+      })
     }, timeoutMs)
 
-    child.on('error', (err) => finish(() => reject(err)))
+    child.on('error', (err) => finish(() => {
+      log?.('error', `命令执行错误：${err.message}（耗时 ${Date.now() - started} ms）`)
+      reject(err)
+    }))
     child.on('close', (code) => {
-      flush(true)
-      finish(() => resolve({ code: code ?? -1, stdout, stderr, all }))
+      finish(() => {
+        log?.(code === 0 ? 'info' : 'error', `命令结束：退出码 ${code ?? -1}，耗时 ${Date.now() - started} ms${echoOutput ? '' : '（此命令的输出为内部数据，不在日志中显示）'}`)
+        resolve({ code: code ?? -1, stdout, stderr, all })
+      })
     })
 
     if (opts.stdin !== undefined) child.stdin.end(opts.stdin)
@@ -119,9 +144,8 @@ export function exec(file: string, args: string[], opts: ExecOptions = {}): Prom
 }
 
 function quoteForLog(a: string): string {
-  // 多行 shell 脚本只显示第一行，避免刷屏
-  if (a.includes('\n')) return `"${a.split('\n')[0]} …"（共 ${a.split('\n').length} 行脚本）`
-  return /[\s"]/.test(a) ? `"${a}"` : a
+  // 仅用于展示（不作为 shell 命令执行），完整保留多行脚本及参数边界。
+  return !a || /[\s"\\]/.test(a) ? `"${a.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : a
 }
 
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {

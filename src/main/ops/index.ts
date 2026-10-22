@@ -73,7 +73,7 @@ export async function runOperation(req: OperationRequest, ctx: OpContext): Promi
     case 'listSystemApps':
       return listSystemApps(ctx)
     case 'debloat':
-      return debloat(req.package, req.remove, ctx)
+      return debloat(req.package, req.remove, ctx, req.root)
     case 'cloneApp':
       return cloneApp(req.package, req.enable, ctx)
     case 'installPlay':
