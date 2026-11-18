@@ -1,13 +1,16 @@
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
-import type { CloseAction, DeviceInfo, LogEntry, LogLevel, MirrorOptions, OperationRequest, OperationResult, Settings } from '@shared/types'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, Tray } from 'electron'
+import { MONITOR_INTERVAL, type TemperatureSample } from '@shared/monitor'
+import { MIRROR_HOTKEY, MIRROR_HOTKEY_LABEL, type CloseAction, type DeviceInfo, type LogEntry, type LogLevel, type MirrorOptions, type MirrorState, type OperationRequest, type OperationResult, type Settings } from '@shared/types'
 import { getCatalog } from './catalog'
 import { describe, detect, selectDevice } from './device'
 import { CancelledError, missingTools, tools } from './exec'
 import { history } from './history'
 import { appendLog, logDir, pruneLogs } from './logfile'
-import { isOpError, loadIcons, runOperation, startMirror, stopMirror } from './ops'
+import { isOpError, loadIcons, mirrorState, onMirrorState, runOperation, setMirrorTopmost, startMirror, stopMirror } from './ops'
+import { readMonitorApps } from './ops/apps'
+import { readMonitorHistory, sampleMonitor } from './ops/monitor'
 import { loadSettings, saveSettings } from './settings'
 import { checkUpdate, downloadUpdate, installUpdate } from './update'
 
@@ -21,6 +24,11 @@ let quitting = false
 let closePrompt = false
 /** 界面已经加载完成，可以弹出界面里的关闭确认框 */
 let rendererReady = false
+let monitorEnabled = false
+let monitorWork: { controller: AbortController; done: Promise<unknown> } | undefined
+let monitorTimer: ReturnType<typeof setInterval> | undefined
+const monitorNotifications = new Set<Notification>()
+let lastMonitorSample: { serial: string; time: number } | undefined
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -33,9 +41,103 @@ function log(level: LogLevel, text: string): void {
 }
 
 function setDevice(d: DeviceInfo): void {
+  if (current.serial !== d.serial || current.mode !== d.mode || current.needsPick !== d.needsPick) {
+    monitorWork?.controller.abort()
+  }
   current = d
   send('device', d)
 }
+
+function canMonitor(serial: string | undefined): serial is string {
+  return !!serial && serial === current.serial && current.mode === 'system' && !current.needsPick && !quitting
+}
+
+function notifyHighTemperature(sample: TemperatureSample, serial: string): void {
+  if (!sample.highTemperatureEvent || !monitorEnabled) return
+  log('warn', `手机电池持续高温：${sample.battery?.toFixed(1)} °C`)
+  if (!Notification.isSupported()) return
+  const notification = new Notification({
+    title: '一加工具箱 · 电池持续高温',
+    body: `${current.model ?? serial} · ${sample.battery?.toFixed(1)} °C。点击查看采集记录。`,
+    icon: appIcon()
+  })
+  monitorNotifications.add(notification)
+  notification.once('close', () => monitorNotifications.delete(notification))
+  notification.once('failed', () => monitorNotifications.delete(notification))
+  notification.once('click', () => {
+    monitorNotifications.delete(notification)
+    showWindow()
+    send('monitor:open', null)
+  })
+  notification.show()
+}
+
+function runMonitorWork<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController()
+  const job = Promise.resolve().then(() => work(controller.signal)).finally(() => {
+    if (monitorWork?.controller === controller) monitorWork = undefined
+  })
+  monitorWork = { controller, done: job }
+  return job
+}
+
+function monitorContext(signal: AbortSignal) {
+  return { signal, log: () => {}, step: () => {}, device: () => {} }
+}
+
+function backgroundSample(): void {
+  const serial = current.serial
+  if (!monitorEnabled || busy || monitorWork || !canMonitor(serial)) return
+  if (lastMonitorSample?.serial === serial && Date.now() - lastMonitorSample.time < MONITOR_INTERVAL - 5000) return
+  void runMonitorWork(async (signal) => {
+    const reading = await sampleMonitor(serial, monitorContext(signal))
+    if (!monitorEnabled || !canMonitor(serial)) return
+    lastMonitorSample = { serial, time: reading.sample.time }
+    send('monitor:sample', reading)
+    notifyHighTemperature(reading.sample, serial)
+  }).catch(() => { /* 断开连接或系统忙，下一次采集重试 */ })
+}
+
+// ───────────── 投屏窗口置顶（scrcpy 没有快捷键，用全局快捷键补上） ─────────────
+
+let mirrorHotkey = false
+/** 上一次同步时的投屏状态，只在打开 / 关闭时注册或注销快捷键 */
+let lastMirrorRunning = false
+
+function mirrorSnapshot(): MirrorState {
+  const state = mirrorState()
+  return { ...state, hotkey: state.running && mirrorHotkey }
+}
+
+async function toggleMirrorTopmost(): Promise<void> {
+  const state = mirrorState()
+  if (!state.running) return
+  await setMirrorTopmost(!state.alwaysOnTop, log)
+}
+
+function syncMirrorHotkey(running: boolean): void {
+  if (running === lastMirrorRunning) return
+  lastMirrorRunning = running
+  if (!running) {
+    globalShortcut.unregister(MIRROR_HOTKEY)
+    mirrorHotkey = false
+    return
+  }
+  try {
+    mirrorHotkey = globalShortcut.register(MIRROR_HOTKEY, () => {
+      void toggleMirrorTopmost()
+    })
+  } catch {
+    mirrorHotkey = false
+  }
+  if (!mirrorHotkey) log('warn', `全局快捷键 ${MIRROR_HOTKEY_LABEL} 被其它程序占用，投屏时请在界面上切换置顶`)
+}
+
+onMirrorState(() => {
+  const running = mirrorState().running
+  syncMirrorHotkey(running)
+  send('mirror:state', mirrorSnapshot())
+})
 
 // ───────────── 设备轮询（执行操作期间暂停，由操作自己上报状态） ─────────────
 
@@ -65,8 +167,26 @@ async function poll(): Promise<void> {
 
 ipcMain.handle('device:get', () => current)
 ipcMain.handle('device:select', (_e, serial: string) => {
+  monitorWork?.controller.abort()
   selectDevice(serial)
   lastKey = '' // 下一轮轮询立即刷新
+})
+
+ipcMain.handle('monitor:history', (_e, serial: string) =>
+  typeof serial === 'string' && serial === current.serial ? readMonitorHistory(serial) : [])
+ipcMain.handle('monitor:enabled', () => monitorEnabled)
+ipcMain.handle('monitor:enabled:set', (_e, enabled: boolean) => {
+  monitorEnabled = enabled === true
+  if (monitorEnabled) backgroundSample()
+  return monitorEnabled
+})
+ipcMain.handle('monitor:apps', async (_e, serial: string, packages: unknown) => {
+  if (!canMonitor(serial) || busy || monitorWork || !Array.isArray(packages) || packages.length > 24) return null
+  try {
+    return await runMonitorWork(signal => readMonitorApps(serial, packages, monitorContext(signal)))
+  } catch {
+    return null
+  }
 })
 
 ipcMain.handle('op:run', async (_e, req: OperationRequest): Promise<OperationResult> => {
@@ -74,6 +194,8 @@ ipcMain.handle('op:run', async (_e, req: OperationRequest): Promise<OperationRes
   busy = new AbortController()
   log('step', `── 开始：${describeRequest(req) ?? req.kind} ──`)
   try {
+    monitorWork?.controller.abort()
+    await monitorWork?.done.catch(() => {})
     const result = await runOperation(req, {
       signal: busy.signal,
       log,
@@ -84,7 +206,13 @@ ipcMain.handle('op:run', async (_e, req: OperationRequest): Promise<OperationRes
       device: setDevice
     })
     log(result.ok ? 'ok' : 'error', result.message)
-    if ((req.kind === 'listApps' || req.kind === 'listSystemApps' || req.kind === 'listUserApps') && result.ok) loadIcons((icons) => send('apps:icons', icons)).catch(() => {})
+    if (result.monitor) {
+      lastMonitorSample = { serial: result.monitor.serial, time: result.monitor.sample.time }
+      notifyHighTemperature(result.monitor.sample, result.monitor.serial)
+    }
+    if ((req.kind === 'listApps' || req.kind === 'listSystemApps' || req.kind === 'listUserApps' || req.kind === 'inspectManagedApp') && result.ok) {
+      loadIcons((icons) => send('apps:icons', icons)).catch(() => {})
+    }
     return result
   } catch (e) {
     const message =
@@ -168,6 +296,8 @@ ipcMain.handle('shell:openExternal', (_e, url: string) => {
 })
 ipcMain.handle('shell:openLogDir', () => shell.openPath(logDir()))
 ipcMain.handle('mirror:start', (_e, opts: MirrorOptions) => startMirror(opts, log))
+ipcMain.handle('mirror:state', () => mirrorSnapshot())
+ipcMain.handle('mirror:topmost', (_e, on: boolean) => setMirrorTopmost(on === true, log))
 ipcMain.handle('history:get', (_e, serial: string) => history(serial))
 ipcMain.handle('app:close', (_e, action: CloseAction, remember?: boolean) => {
   if (!closePrompt) return
@@ -180,6 +310,8 @@ ipcMain.handle('app:close', (_e, action: CloseAction, remember?: boolean) => {
 
 function describeRequest(req: OperationRequest): string {
   switch (req.kind) {
+    case 'monitor':
+      return `读取温度与流量（最近 ${req.days} 天）`
     case 'reboot':
       return `重启到 ${req.target}`
     case 'unlock':
@@ -236,6 +368,8 @@ function describeRequest(req: OperationRequest): string {
       return { start: '启动 Shizuku', status: '检查 Shizuku 状态', autostart: '设置 Shizuku 开机自启' }[req.action]
     case 'listUserApps':
       return '读取应用列表'
+    case 'inspectManagedApp':
+      return `读取应用 ${req.package}`
     case 'freezeApp':
       return req.freeze ? `冻结 ${req.package}` : `解冻 ${req.package}`
     case 'appPermissions':
@@ -375,13 +509,17 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  app.setAppUserModelId('io.github.oneplus-toolbox')
   pruneLogs()
   createWindow()
   poll()
+  monitorTimer = setInterval(backgroundSample, 5000)
 })
 
 app.on('before-quit', () => {
   quitting = true
+  clearInterval(monitorTimer)
+  monitorWork?.controller.abort()
 })
 
 app.on('window-all-closed', () => app.quit())
@@ -390,6 +528,7 @@ app.on('window-all-closed', () => app.quit())
 app.on('will-quit', () => {
   tray?.destroy()
   tray = null
+  globalShortcut.unregisterAll()
   stopMirror()
   spawnSync(tools.adb, ['kill-server'], { windowsHide: true, timeout: 3000 })
 })

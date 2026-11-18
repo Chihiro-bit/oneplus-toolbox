@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mirrorArgs, parseStat, remotePath } from '../src/main/ops/media'
+import { mirrorArgs, mirrorState, parseStat, remotePath } from '../src/main/ops/media'
 
 describe('remotePath', () => {
   it('规范化', () => {
@@ -50,5 +50,11 @@ describe('mirrorArgs', () => {
   })
   it('拒绝不合法的包名', () => {
     expect(() => mirrorArgs({ ...base, display: { app: 'a; reboot', size: 'auto', keepApp: false, audioOnPhone: false } }, 'x')).toThrow()
+  })
+})
+
+describe('mirrorState', () => {
+  it('没有启动投屏时窗口没打开、也没有置顶', () => {
+    expect(mirrorState()).toEqual({ running: false, alwaysOnTop: false })
   })
 })

@@ -127,6 +127,15 @@
   let dirPicks = 0
 
   window.toolbox = {
+    getMonitorHistory: async () => [],
+    getMonitorEnabled: async () => false,
+    setMonitorEnabled: async (enabled) => enabled,
+    onMonitorSample: () => () => {},
+    onMonitorOpen: () => () => {},
+    getMonitorApps: async (_serial, packages) => APPS.filter(a => packages.includes(a.package))
+      .map((a, i) => ({ ...a, icon: icon(i, a.label), system: false })),
+    onCloseRequest: () => () => {},
+    resolveClose: async () => {},
     getDevice: async () => DEVICES[q.get('dev') || 'system'],
     onDevice: () => () => {},
     onLog: (cb) => {
@@ -138,6 +147,25 @@
     onAppIcons: (cb) => (listeners.icons.push(cb), () => {}),
     run: (req) =>
       new Promise((resolve) => {
+        if (req.kind === 'monitor') {
+          const history = Array.from({ length: 30 }, (_, i) => ({
+            time: now - (29 - i) * 60000, battery: 36 + Math.sin(i / 7) * 8 + i / 15,
+            level: i < 16 ? 76 : 75, charging: false, screenOn: false, highTemperatureEvent: i === 13,
+            cpu: [{ name: 'com.example.video', percent: 24.5 }, { name: 'system_server', percent: 6.2 }]
+          }))
+          resolve({ ok: true, message: '监控数据已更新', monitor: {
+            serial: '1a2b3c4d', time: now, days: req.days, sample: history.at(-1), history, notes: [],
+            powerSince: now - 86400000, healthPercent: 97, cycles: 169,
+            power: ['video', 'chat', 'music'].map((name, i) => ({ uid: 10001 + i, packages: [`com.example.${name}`], mah: 156 / (i + 1) })),
+            trafficStart: now - 86400000, trafficEnd: now,
+            traffic: ['video', 'chat', 'music'].map((name, i) => ({ uid: 10001 + i, packages: [`com.example.${name}`], mobile: 300000000 / (i + 1), wifi: 600000000 / (i + 1), other: 0, rx: 800000000 / (i + 1), tx: 100000000 / (i + 1) }))
+          } })
+          return
+        }
+        if (req.kind === 'inspectManagedApp') {
+          resolve({ ok: true, message: '已读取应用', apps: APPS.filter(a => a.package === req.package) })
+          return
+        }
         if (req.kind === 'listApps') {
           setTimeout(() => {
             resolve({ ok: true, message: `共 ${APPS.length} 个应用，其中 2 个已双开`, apps: APPS })
@@ -211,6 +239,16 @@
     await wait(300)
     if (q.get('page')) click('.nav-item', q.get('page'))
     await wait(150)
+    if (['monitor', 'monitor-traffic', 'monitor-power', 'monitor-detail'].includes(scene)) {
+      click('button', '读取 / 刷新')
+      await wait(150)
+      if (scene === 'monitor-traffic' || scene === 'monitor-power') {
+        const title = scene === 'monitor-traffic' ? '应用流量排行' : '电量与待机掉电'
+        const card = [...document.querySelectorAll('.card-title')].find(el => el.textContent.includes(title))
+        card?.closest('.card')?.scrollIntoView()
+      }
+      if (scene === 'monitor-detail') click('.monitor-app-link', '视频')
+    }
     if (scene === 'root') {
       setInput('.rom-input input:not([readonly])', 'D:\\ROM\\PJZ110_16.0.0.300.zip')
     }

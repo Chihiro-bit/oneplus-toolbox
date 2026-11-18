@@ -1,6 +1,6 @@
 import { FEATURES } from '@shared/features'
 import type { OperationRequest, OperationResult } from '@shared/types'
-import { cloneApp, debloat, freezeApp, installPlay, listApps, listSystemApps, listUserApps, otaUpdates } from './apps'
+import { cloneApp, debloat, freezeApp, inspectManagedApp, installPlay, listApps, listSystemApps, listUserApps, otaUpdates } from './apps'
 import { appPermissions, grantPermission } from './permissions'
 import { backupApp, restoreApp } from './appbackup'
 export { loadIcons } from './apps'
@@ -10,13 +10,14 @@ import { bootCollect, snapshotUpdate } from './bootdiag'
 import { driverCheck } from './drivers'
 import { listRemote, pullFile, pushFiles, screenshot } from './media'
 import { wireless } from './wireless'
-export { startMirror, stopMirror } from './media'
+export { mirrorState, onMirrorState, setMirrorTopmost, startMirror, stopMirror } from './media'
 import { OpError, type OpContext } from './common'
 import { exportDiagnostics } from './diagnostics'
 import { edlDetect, edlFlash, edlProbe, edlReset } from './edl'
 import { installApps } from './install'
 import { installModules } from './modules'
 import { network } from './network'
+import { monitor } from './monitor'
 import { modules, restoreStock, undoFlash, unroot } from './rescue'
 import { root } from './root'
 import { shizuku } from './shizuku'
@@ -28,6 +29,8 @@ export async function runOperation(req: OperationRequest, ctx: OpContext): Promi
   if (!FEATURES.edl && (req.kind.startsWith('edl') || (req.kind === 'reboot' && req.target === 'edl')))
     throw new OpError('9008 / EDL 相关功能暂时停用')
   switch (req.kind) {
+    case 'monitor':
+      return monitor(req.days, ctx)
     case 'reboot':
       return reboot(req.target, ctx)
     case 'unlock':
@@ -84,6 +87,8 @@ export async function runOperation(req: OperationRequest, ctx: OpContext): Promi
       return shizuku(req.action, ctx)
     case 'listUserApps':
       return listUserApps(ctx)
+    case 'inspectManagedApp':
+      return inspectManagedApp(req.package, req.system, ctx)
     case 'freezeApp':
       return freezeApp(req.package, req.freeze, ctx)
     case 'appPermissions':

@@ -11,9 +11,10 @@ import { RootPage } from './root'
 import { SettingsPage } from './settings'
 import { isOnePlus, MODE_LABEL, useToolbox } from './state'
 import { ToolsPage } from './tools'
+import { MonitorPage } from './monitor'
 import { BrandWarning, CloseDialog, ConfirmDialog, LogPanel, ModeBadge, RunBanner, type ConfirmSpec } from './ui'
 
-export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'diagnose' | 'rescue' | 'slot' | 'edl' | 'apps' | 'tools' | 'settings'
+export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'diagnose' | 'rescue' | 'slot' | 'edl' | 'apps' | 'tools' | 'monitor' | 'settings'
 
 const NAV: { id: PageId; label: string; icon: typeof Home }[] = [
   { id: 'overview', label: '概览', icon: Home },
@@ -25,12 +26,14 @@ const NAV: { id: PageId; label: string; icon: typeof Home }[] = [
   { id: 'slot', label: 'A/B 槽位', icon: ArrowLeftRight },
   ...(FEATURES.edl ? [{ id: 'edl' as const, label: '9008 救砖', icon: HardDrive }] : []),
   { id: 'apps', label: '应用管理', icon: Copy },
+  { id: 'monitor', label: '温度与流量', icon: Cpu },
   { id: 'tools', label: '系统工具', icon: Wrench }
 ]
 
 export default function App() {
   const tb = useToolbox()
   const [page, setPage] = useState<PageId>('overview')
+  const [focusApp, setFocusApp] = useState<{ package: string; system: boolean }>()
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null)
   const [closeAsk, setCloseAsk] = useState(false)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
@@ -41,6 +44,7 @@ export default function App() {
 
   // 主进程拦截关闭按钮后，由界面弹出自己的确认框
   useEffect(() => window.toolbox.onCloseRequest(() => setCloseAsk(true)), [])
+  useEffect(() => window.toolbox.onMonitorOpen(() => setPage('monitor')), [])
 
   // 配置了更新仓库时，启动后静默检查一次
   useEffect(() => {
@@ -51,7 +55,7 @@ export default function App() {
 
   const props = { tb, confirm: setConfirm, go: setPage }
   const navItem = ({ id, label, icon: Icon }: (typeof NAV)[number]) => (
-    <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => setPage(id)}>
+    <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => { setFocusApp(undefined); setPage(id) }}>
       <Icon size={17} />
       {label}
     </button>
@@ -121,8 +125,9 @@ export default function App() {
           {page === 'rescue' && <RescuePage {...props} />}
           {page === 'slot' && <SlotPage {...props} />}
           {FEATURES.edl && page === 'edl' && <EdlPage {...props} />}
-          {page === 'apps' && <AppsPage {...props} />}
+          {page === 'apps' && <AppsPage key={`${device.serial}|${focusApp?.package ?? 'all'}`} {...props} focus={focusApp} />}
           {page === 'tools' && <ToolsPage {...props} />}
+          {page === 'monitor' && <MonitorPage {...props} manageApp={(entry) => { setFocusApp(entry); setPage('apps') }} />}
           {page === 'settings' && <SettingsPage {...props} />}
         </div>
         <LogPanel logs={tb.logs} onClear={tb.clearLogs} />

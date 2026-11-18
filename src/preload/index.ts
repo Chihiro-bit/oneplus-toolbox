@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { DeviceInfo, LogEntry, ToolboxApi } from '@shared/types'
+import type { DeviceInfo, LogEntry, MirrorState, ToolboxApi } from '@shared/types'
 
 function subscribe<T>(channel: string, cb: (v: T) => void): () => void {
   const handler = (_e: IpcRendererEvent, v: T): void => cb(v)
@@ -8,6 +8,12 @@ function subscribe<T>(channel: string, cb: (v: T) => void): () => void {
 }
 
 const api: ToolboxApi = {
+  getMonitorHistory: (serial) => ipcRenderer.invoke('monitor:history', serial),
+  getMonitorEnabled: () => ipcRenderer.invoke('monitor:enabled'),
+  setMonitorEnabled: (enabled) => ipcRenderer.invoke('monitor:enabled:set', enabled),
+  onMonitorSample: (cb) => subscribe('monitor:sample', cb),
+  onMonitorOpen: (cb) => subscribe('monitor:open', cb),
+  getMonitorApps: (serial, packages) => ipcRenderer.invoke('monitor:apps', serial, packages),
   getDevice: () => ipcRenderer.invoke('device:get'),
   onCloseRequest: (cb) => subscribe('app:close-request', cb),
   resolveClose: (action, remember) => ipcRenderer.invoke('app:close', action, remember),
@@ -35,6 +41,9 @@ const api: ToolboxApi = {
   openLogDir: () => ipcRenderer.invoke('shell:openLogDir'),
   getHistory: (serial) => ipcRenderer.invoke('history:get', serial),
   startMirror: (opts) => ipcRenderer.invoke('mirror:start', opts),
+  getMirrorState: () => ipcRenderer.invoke('mirror:state'),
+  setMirrorOnTop: (on) => ipcRenderer.invoke('mirror:topmost', on),
+  onMirror: (cb) => subscribe<MirrorState>('mirror:state', cb),
   pathForFile: (file) => webUtils.getPathForFile(file)
 }
 

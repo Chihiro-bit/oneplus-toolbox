@@ -1,8 +1,8 @@
 {
   "name": "oneplus-toolbox",
   "productName": "一加工具箱",
-  "version": "1.4.0",
-  "description": "一加手机刷机辅助工具：解锁 Bootloader、一键 Root（Magisk / APatch / KernelSU）、A/B 槽位、应用双开",
+  "version": "1.5.0",
+  "description": "一加手机 Windows 工具箱，支持 Bootloader 解锁、一键 Root、开机救援、应用管理、投屏及温度、耗电和流量监控",
   "author": "oneplus-toolbox contributors",
   "license": "Apache-2.0",
   "main": "out/main/index.js",

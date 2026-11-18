@@ -1,4 +1,5 @@
 import type { AppEntry, OperationResult } from '@shared/types'
+import type { MonitorApp } from '@shared/monitor'
 import { exec, tools } from '../exec'
 import { adb, OpError, REMOTE_DIR, requireSystem, shq, type OpContext } from './common'
 
@@ -41,20 +42,20 @@ function appListScript(listCmd: string, extra: string[]): string {
 }
 
 /** 跑 appListScript 并解析结果；marks 收集 extra 输出的「标记|包名」行 */
-async function readApps(serial: string, script: string, ctx: OpContext): Promise<{ apps: AppEntry[]; marks: Map<string, Set<string>> }> {
+async function readApps(serial: string, script: string, ctx: OpContext, sources = iconSources, timeout = 600_000): Promise<{ apps: AppEntry[]; marks: Map<string, Set<string>> }> {
   await adb(serial, ['shell', 'mkdir', '-p', REMOTE_DIR], ctx)
   await adb(serial, ['push', tools.aapt2, `${REMOTE_DIR}/aapt2`], ctx, 60_000)
-  const r = await adb(serial, ['shell', script], ctx, 600_000, false)
+  const r = await adb(serial, ['shell', script], ctx, timeout, false)
   const marks = new Map<string, Set<string>>()
   const apps: AppEntry[] = []
-  iconSources.clear()
+  sources.clear()
   for (const line of r.stdout.split(/\r?\n/)) {
     const [kind, pkg, apk, icon, ...rest] = line.split('|')
     const name = pkg?.trim()
     if (!name || !kind) continue
     if (kind === 'APP') {
       apps.push({ package: name, label: rest.join('|').trim() || name, cloned: false })
-      if (apk && icon?.trim()) iconSources.set(name, { serial, apk: apk.trim(), icon: icon.trim() })
+      if (apk && icon?.trim()) sources.set(name, { serial, apk: apk.trim(), icon: icon.trim() })
     } else {
       if (!marks.has(kind)) marks.set(kind, new Set())
       marks.get(kind)!.add(name)
@@ -181,6 +182,23 @@ export async function listUserApps(ctx: OpContext): Promise<OperationResult> {
   return { ok: true, message: `共 ${apps.length} 个应用，其中 ${disabled.size} 个已冻结`, apps }
 }
 
+export async function inspectManagedApp(pkg: string, system: boolean, ctx: OpContext): Promise<OperationResult> {
+  if (typeof pkg !== 'string' || !/^[\w.]{1,255}$/.test(pkg)) throw new OpError('包名不合法')
+  const serial = await requireSystem(ctx)
+  const group = system ? '-s' : '-3'
+  const target = shq(pkg)
+  const script = appListScript(`pm list packages -f ${group} --user 0 ${target}`, [
+    `for p in $(pm list packages -d --user 0 ${target} | sed "s/package://"); do echo "DISABLED|$p"; done`
+  ])
+  const { apps, marks } = await readApps(serial, script, ctx)
+  const entry = apps.find(a => a.package === pkg)
+  if (!entry) return { ok: false, message: '在手机主用户下未找到此应用，请检查应用是否位于分身或私密空间' }
+  entry.system = system
+  entry.disabled = marks.get('DISABLED')?.has(pkg) ?? false
+  entry.protected = PROTECTED_PACKAGES.has(pkg)
+  return { ok: true, message: `已读取 ${entry.label}`, apps: [entry] }
+}
+
 /**
  * 冻结 = pm disable-user：应用和数据都还在，只是不能运行、图标从桌面消失；解冻 = pm enable。
  * 比卸载温和，适合偶尔才用、又爱在后台跑的应用。当前的桌面和输入法不允许冻结，否则手机可能没法操作
@@ -219,6 +237,44 @@ const iconCache = new Map<string, string>()
 
 const MIME: Record<string, string> = { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg' }
 const ICON_BATCH = 20
+
+const monitorAppCache = new Map<string, { app: MonitorApp; expires: number }>()
+
+/** Read only the packages seen in the selected report, without replacing app management's icon sources. */
+export async function readMonitorApps(serial: string, requested: string[], ctx: OpContext): Promise<MonitorApp[]> {
+  const names = [...new Set(requested.filter(p => typeof p === 'string' && /^[\w.]{1,255}$/.test(p)))].slice(0, 24)
+  const now = Date.now()
+  for (const [key, value] of monitorAppCache) if (value.expires <= now) monitorAppCache.delete(key)
+  const key = (p: string) => `${serial}|${p}`
+  const missing = names.filter(p => !monitorAppCache.has(key(p)))
+  if (missing.length) {
+    const sources = new Map<string, IconSource>()
+    const pattern = missing.map(shq).join('|')
+    const filtered = `pm list packages -f --user all | while read -r e; do case "${'$'}{e##*=}" in ${pattern}) printf '%s\\n' "$e";; esac; done`
+    const { apps, marks } = await readApps(serial, appListScript(filtered, [
+      'for p in $(pm list packages -s --user all | sed "s/package://"); do echo "SYSTEM|$p"; done'
+    ]), { ...ctx, log: () => {} }, sources, 25_000)
+    const icons = new Map<string, string>()
+    if (sources.size) {
+      const script = Array.from(sources, ([pkg, s]) =>
+        `echo "ICON|${pkg}|$(unzip -p ${shq(s.apk)} ${shq(s.icon)} 2>/dev/null | head -c 65539 | base64 -w 0)"`).join('\n')
+      const result = await adb(serial, ['shell', script], { ...ctx, log: () => {} }, 15_000, false)
+      for (const line of result.stdout.split(/\r?\n/)) {
+        const [marker, pkg, base64] = line.split('|')
+        const source = sources.get(pkg)
+        const mime = source && MIME[source.icon.split('.').pop()!.toLowerCase()]
+        if (marker === 'ICON' && mime && base64 && base64.length <= 87_384 && /^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+          icons.set(pkg, `data:${mime};base64,${base64}`)
+        }
+      }
+    }
+    for (const a of apps) {
+      const entry = { package: a.package, label: a.label, icon: icons.get(a.package), system: marks.get('SYSTEM')?.has(a.package) ?? false }
+      monitorAppCache.set(key(a.package), { app: entry, expires: now + 15 * 60_000 })
+    }
+  }
+  return names.flatMap(p => monitorAppCache.get(key(p))?.app ?? [])
+}
 
 /**
  * 从各 APK 中解出图标位图，分批回传 data URL。独立于操作队列运行，失败只会少几个图标。

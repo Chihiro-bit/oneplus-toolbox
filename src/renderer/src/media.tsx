@@ -1,6 +1,6 @@
-import { useState, type DragEvent } from 'react'
-import { Camera, ChevronRight, Download, File, Folder, FolderUp, MonitorSmartphone, RefreshCw, Upload } from 'lucide-react'
-import { DISPLAY_SIZES, type AppEntry, type DisplaySize, type RemoteEntry, type WirelessRequest } from '@shared/types'
+import { useEffect, useState, type DragEvent } from 'react'
+import { Camera, ChevronRight, Download, File, Folder, FolderUp, MonitorSmartphone, Pin, PinOff, RefreshCw, Upload } from 'lucide-react'
+import { DISPLAY_SIZES, MIRROR_HOTKEY_LABEL, type AppEntry, type DisplaySize, type MirrorState, type RemoteEntry, type WirelessRequest } from '@shared/types'
 import type { Toolbox } from './state'
 import { Card } from './ui'
 
@@ -20,6 +20,8 @@ export function MirrorCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolea
   const [turnScreenOff, setTurnScreenOff] = useState(false)
   const [stayAwake, setStayAwake] = useState(true)
   const [alwaysOnTop, setAlwaysOnTop] = useState(false)
+  const [mirror, setMirror] = useState<MirrorState>({ running: false, alwaysOnTop: false })
+  const [pinning, setPinning] = useState(false)
   const [apps, setApps] = useState<AppEntry[] | null>(null)
   const [app, setApp] = useState('')
   const [size, setSize] = useState<DisplaySize>('1920x1080')
@@ -28,6 +30,40 @@ export function MirrorCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolea
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   // 投屏不占用操作队列，有操作在进行时也可以打开
   const mirrorBlocked = tb.device.mode !== 'system' ? '需要手机开机并开启 USB 调试' : tb.device.needsPick ? '请先在左下角选择要操作的设备' : undefined
+
+  useEffect(() => {
+    let alive = true
+    window.toolbox.getMirrorState().then((s) => {
+      if (alive) setMirror(s)
+    }).catch(() => {})
+    const off = window.toolbox.onMirror((s) => setMirror(s))
+    return () => {
+      alive = false
+      off()
+    }
+  }, [])
+
+  // 快捷切换到置顶后，把结果同步回启动选项，下次投屏沿用
+  useEffect(() => {
+    if (mirror.running) setAlwaysOnTop(mirror.alwaysOnTop)
+  }, [mirror.running, mirror.alwaysOnTop])
+
+  const changeTopmost = async (on: boolean) => {
+    setAlwaysOnTop(on)
+    if (!mirror.running) return
+    setPinning(true)
+    setMirror((m) => ({ ...m, alwaysOnTop: on })) // 先按点击结果显示，失败再改回来
+    const r = await window.toolbox.setMirrorOnTop(on)
+    setPinning(false)
+    if (r.ok) {
+      // 按钮和状态行已经能看出结果，不覆盖下面的提示文字
+      setMsg(null)
+      return
+    }
+    setMirror((m) => ({ ...m, alwaysOnTop: !on }))
+    setAlwaysOnTop(!on)
+    setMsg({ ok: false, text: r.message })
+  }
 
   const loadApps = async () => {
     const r = await tb.start('读取应用列表', { kind: 'listUserApps' })
@@ -108,12 +144,35 @@ export function MirrorCard({ tb, gate }: { tb: Toolbox; gate: { disabled: boolea
           </label>
         </>
       )}
-      <label className="check">
-        <input type="checkbox" checked={alwaysOnTop} onChange={(e) => setAlwaysOnTop(e.target.checked)} />
-        <span>投屏窗口始终置顶（不会被其它窗口挡住）</span>
-      </label>
+      {mirror.running ? (
+        <div className="mirror-live">
+          <span className="mirror-live-title">
+            <span className="dot" /> 投屏窗口已打开
+          </span>
+          {mirror.hotkey && <span className="muted small">或按 {MIRROR_HOTKEY_LABEL}</span>}
+          <button
+            className="btn btn-secondary"
+            disabled={pinning}
+            title={mirror.alwaysOnTop ? '让其它窗口可以挡住投屏窗口' : '让投屏窗口始终显示在最上面'}
+            onClick={() => changeTopmost(!mirror.alwaysOnTop)}
+          >
+            {mirror.alwaysOnTop ? <PinOff size={14} /> : <Pin size={14} />}
+            {mirror.alwaysOnTop ? '取消置顶' : '置顶'}
+          </button>
+        </div>
+      ) : (
+        <label className="check">
+          <input type="checkbox" checked={alwaysOnTop} onChange={(e) => setAlwaysOnTop(e.target.checked)} />
+          <span>投屏窗口始终置顶（打开后也能随时切换）</span>
+        </label>
+      )}
       <div className="btn-row">
-        <button className="btn btn-primary" disabled={!!mirrorBlocked} title={mirrorBlocked} onClick={start}>
+        <button
+          className="btn btn-primary"
+          disabled={!!mirrorBlocked || mirror.running}
+          title={mirror.running ? '投屏窗口已经打开，关掉窗口后再开' : mirrorBlocked}
+          onClick={start}
+        >
           <MonitorSmartphone size={15} /> {separate ? '打开独立屏幕' : '开始投屏'}
         </button>
         <button className="btn btn-secondary" disabled={gate.disabled} title={gate.reason} onClick={() => tb.start('截图', { kind: 'screenshot' })}>

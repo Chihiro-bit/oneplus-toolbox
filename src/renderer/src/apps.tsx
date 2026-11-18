@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Archive, ArchiveRestore, Copy, KeyRound, Package, RefreshCw, Search, Snowflake, X } from 'lucide-react'
 import { isRooted } from '@shared/root'
 import type { AppEntry, AppPermission } from '@shared/types'
@@ -14,10 +14,10 @@ const LOAD: Record<Tab, { title: string; kind: 'listApps' | 'listUserApps' | 'li
   system: { title: '读取系统应用列表', kind: 'listSystemApps' }
 }
 
-export function AppsPage({ tb, confirm }: PageProps) {
-  const [tab, setTab] = useState<Tab>('clone')
+export function AppsPage({ tb, confirm, focus }: PageProps & { focus?: { package: string; system: boolean } }) {
+  const [tab, setTab] = useState<Tab>(focus ? (focus.system ? 'system' : 'user') : 'clone')
   const [lists, setLists] = useState<Record<Tab, AppEntry[] | null>>({ clone: null, user: null, backup: null, system: null })
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(focus?.package ?? '')
   const [pending, setPending] = useState<string | null>(null)
   const [icons, setIcons] = useState<Record<string, string>>({})
   const [perms, setPerms] = useState<{ pkg: string; list: AppPermission[] } | null>(null)
@@ -28,6 +28,16 @@ export function AppsPage({ tb, confirm }: PageProps) {
   // 列表出来后，图标在后台分批到达
   useEffect(() => window.toolbox.onAppIcons((batch) => setIcons((m) => ({ ...m, ...batch }))), [])
   const gate = useGate(tb, ['system'])
+  const focusLoaded = useRef(false)
+  useEffect(() => {
+    if (!focus || gate.disabled || focusLoaded.current) return
+    focusLoaded.current = true
+    void tb.start('读取应用', { kind: 'inspectManagedApp', package: focus.package, system: focus.system }).then(result => {
+      if (!result.ok || !result.apps) return
+      const targetTab = focus.system ? 'system' : 'user'
+      setLists(current => ({ ...current, [targetTab]: result.apps! }))
+    })
+  }, [focus, gate.disabled, tb.start])
 
   const load = async () => {
     const r = await tb.start(LOAD[tab].title, { kind: LOAD[tab].kind })
@@ -198,7 +208,6 @@ export function AppsPage({ tb, confirm }: PageProps) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索应用名或包名"
-              disabled={!apps}
               spellCheck={false}
             />
             {query && (

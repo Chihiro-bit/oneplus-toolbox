@@ -1,6 +1,7 @@
 // 主进程与渲染进程共用的类型
 
 import type { NetworkRequest, NetworkState } from './network'
+import type { MonitorApp, MonitorDays, MonitorReading, MonitorState, TemperatureSample } from './monitor'
 
 /**
  * none=未连接，system=开机(adb)，recovery=Recovery(adb)，fastboot=Bootloader 里的 Fastboot，
@@ -198,6 +199,19 @@ export const DISPLAY_SIZES: Record<DisplaySize, { label: string; arg?: string }>
   '1280x720': { label: '720p 横屏（更流畅）', arg: '1280x720/160' }
 }
 
+/** 投屏期间切换置顶的全局快捷键：scrcpy 只有启动参数，没有对应的快捷键 */
+export const MIRROR_HOTKEY = 'CommandOrControl+Alt+T'
+/** 界面上显示的写法 */
+export const MIRROR_HOTKEY_LABEL = 'Ctrl+Alt+T'
+
+/** 已打开的投屏窗口的状态 */
+export interface MirrorState {
+  running: boolean
+  alwaysOnTop: boolean
+  /** 投屏期间能用的全局快捷键（被其它程序占用时不提供） */
+  hotkey?: boolean
+}
+
 export interface MirrorOptions {
   turnScreenOff: boolean
   stayAwake: boolean
@@ -341,6 +355,7 @@ export interface AppBackupManifest {
 }
 
 export type OperationRequest =
+  | { kind: 'monitor'; days: MonitorDays }
   | { kind: 'reboot'; target: RebootTarget }
   | { kind: 'unlock' }
   | { kind: 'relock' }
@@ -369,6 +384,7 @@ export type OperationRequest =
   | { kind: 'otaUpdates'; disable: boolean }
   | { kind: 'shizuku'; action: ShizukuAction }
   | { kind: 'listUserApps' }
+  | { kind: 'inspectManagedApp'; package: string; system: boolean }
   | { kind: 'freezeApp'; package: string; freeze: boolean }
   | { kind: 'appPermissions'; package: string }
   | { kind: 'grantPermission'; package: string; permission: string; grant: boolean }
@@ -390,6 +406,7 @@ export interface LogEntry {
 }
 
 export interface OperationResult {
+  monitor?: MonitorState
   ok: boolean
   message: string
   /** 修补后镜像的保存位置等附加产物 */
@@ -435,6 +452,12 @@ export interface UpdateInfo {
 export type CloseAction = 'tray' | 'quit' | 'cancel'
 
 export interface ToolboxApi {
+  getMonitorHistory(serial: string): Promise<TemperatureSample[]>
+  getMonitorEnabled(): Promise<boolean>
+  setMonitorEnabled(enabled: boolean): Promise<boolean>
+  onMonitorSample(cb: (reading: MonitorReading) => void): () => void
+  onMonitorOpen(cb: () => void): () => void
+  getMonitorApps(serial: string, packages: string[]): Promise<MonitorApp[] | null>
   getDevice(): Promise<DeviceInfo>
   /** 主进程请求关闭窗口时触发，界面应弹出自己的确认框 */
   onCloseRequest(cb: () => void): () => void
@@ -470,6 +493,11 @@ export interface ToolboxApi {
   openExternal(url: string): Promise<void>
   /** 打开 scrcpy 投屏窗口（不占用操作队列） */
   startMirror(opts: MirrorOptions): Promise<OperationResult>
+  /** 已打开的投屏窗口是否还在、是否置顶 */
+  getMirrorState(): Promise<MirrorState>
+  /** 投屏窗口打开期间，随时设置 / 取消置顶 */
+  setMirrorOnTop(on: boolean): Promise<OperationResult>
+  onMirror(cb: (state: MirrorState) => void): () => void
   /** 这台设备的刷写记录（旧的在前） */
   getHistory(serial: string): Promise<FlashRecord[]>
   /** 打开日志文件夹 */

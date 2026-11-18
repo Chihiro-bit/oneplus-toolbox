@@ -18,6 +18,10 @@ const ONLY = process.env.SHOTS_ONLY?.split(',')
 const PORT = 5179
 
 const SCENES = [
+  { file: 'monitor', query: 'page=温度与流量&scene=monitor' },
+  { file: 'monitor-traffic', query: 'page=温度与流量&scene=monitor-traffic' },
+  { file: 'monitor-power', query: 'page=温度与流量&scene=monitor-power' },
+  { file: 'monitor-detail', query: 'page=温度与流量&scene=monitor-detail' },
   { file: 'overview', query: 'dev=system' },
   { file: 'overview-dark', query: 'dev=system', dark: true },
   { file: 'root', query: 'page=一键 Root&scene=root' },

@@ -97,6 +97,7 @@
 - [x] **投屏、截图和文件传输**（「系统工具」）
   - scrcpy v5.0.1 由 `fetch-tools.mjs` 拉取打包（sha256 已和 GitHub 公布的一致），用 `ADB` 环境变量让它用工具箱自己的 adb；`THIRD_PARTY_NOTICES.md` 已更新
   - 截图：`screencap` 后拉回「文档\一加工具箱\截图」；文件传输：浏览 /sdcard、拖拽发送、点击接收（存到「文档\一加工具箱\传输」），路径限制在 /sdcard 内
+  - 投屏窗口置顶可以随时切换：scrcpy 只有启动参数 `--always-on-top`，没有运行时快捷键，所以由工具箱用 Win32 `SetWindowPos`（PowerShell + Add-Type 调 user32）改已打开窗口的 `WS_EX_TOPMOST`；界面上的按钮和全局快捷键 `Ctrl+Alt+T` 都走这条路径，窗口还没画出来时会等最多 3 秒
 - [x] **驱动诊断**（`ops/drivers.ts`，概览页「检查驱动」）：`Get-PnpDevice` 按 VID（2A70 / 22D9 / 18D1 / 05C6）和名称找手机相关设备，按 ConfigManagerErrorCode 给出说明和该装的驱动
 - [x] **多设备选择**：连了多台时左下角出现选择框；没选中时所有操作都拒绝；`waitForMode` 只认选中的序列号，等 adb 时用 `-s`
 

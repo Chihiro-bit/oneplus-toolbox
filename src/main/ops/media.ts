@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { DISPLAY_SIZES, type LogLevel, type MirrorOptions, type OperationResult, type RemoteEntry } from '@shared/types'
+import { DISPLAY_SIZES, type LogLevel, type MirrorOptions, type MirrorState, type OperationResult, type RemoteEntry } from '@shared/types'
 import { detect } from '../device'
 import { tools } from '../exec'
 import { adb, OpError, REMOTE_DIR, requireSystem, shq, type OpContext } from './common'
 import { outputDir, workDir } from './root'
+import { setWindowTopmost } from './winwindow'
 
 const stamp = (): string => new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
 
@@ -115,6 +116,36 @@ export async function pullFile(path: string, ctx: OpContext): Promise<OperationR
 // ───────────── 投屏 ─────────────
 
 let mirror: ReturnType<typeof spawn> | null = null
+/** 投屏窗口当前的置顶状态（启动时跟随 --always-on-top，之后可以在界面上或按快捷键切换） */
+let mirrorTopmost = false
+/** 置顶操作串行执行，连点或快捷键同时触发时不会互相覆盖 */
+let topmostQueue: Promise<unknown> = Promise.resolve()
+
+type MirrorListener = (state: MirrorState) => void
+const mirrorListeners = new Set<MirrorListener>()
+
+export function mirrorState(): MirrorState {
+  return { running: mirror !== null && mirror.exitCode === null, alwaysOnTop: mirrorTopmost }
+}
+
+/** 投屏窗口打开 / 关闭 / 置顶状态变化时通知界面 */
+export function onMirrorState(cb: MirrorListener): () => void {
+  mirrorListeners.add(cb)
+  return () => {
+    mirrorListeners.delete(cb)
+  }
+}
+
+function emitMirrorState(): void {
+  const state = mirrorState()
+  for (const cb of mirrorListeners) {
+    try {
+      cb(state)
+    } catch {
+      /* 界面回调出错不影响投屏 */
+    }
+  }
+}
 
 /**
  * scrcpy 参数。独立屏幕用 --new-display 在手机上建一块虚拟屏幕（Android 10+），
@@ -164,6 +195,7 @@ export async function startMirror(
   log('cmd', `scrcpy ${args.join(' ')}`)
   const child = spawn(tools.scrcpy, args, { windowsHide: true, env: { ...process.env, ADB: tools.adb } })
   mirror = child
+  mirrorTopmost = opts.alwaysOnTop
   const onData = (buf: Buffer) => {
     for (const line of buf.toString('utf8').split(/\r?\n/)) if (line.trim()) log('info', `[scrcpy] ${line.trim()}`)
   }
@@ -171,9 +203,19 @@ export async function startMirror(
   child.stderr?.on('data', onData)
   child.on('exit', (code) => {
     log(code === 0 ? 'info' : 'warn', `投屏已结束${code ? `（退出码 ${code}）` : ''}`)
-    if (mirror === child) mirror = null
+    if (mirror !== child) return
+    mirror = null
+    mirrorTopmost = false
+    emitMirrorState()
   })
-  child.on('error', (e) => log('error', `scrcpy 启动失败：${e.message}`))
+  child.on('error', (e) => {
+    log('error', `scrcpy 启动失败：${e.message}`)
+    if (mirror !== child) return
+    mirror = null
+    mirrorTopmost = false
+    emitMirrorState()
+  })
+  emitMirrorState()
   return {
     ok: true,
     message: opts.display
@@ -182,6 +224,37 @@ export async function startMirror(
   }
 }
 
+/**
+ * 投屏窗口打开期间随时切换置顶。
+ * scrcpy 进程已经起来、窗口还没画出来时也能用（会等一会儿窗口出现）。
+ */
+export function setMirrorTopmost(on: boolean, log: (level: LogLevel, text: string) => void): Promise<OperationResult> {
+  const run = async (): Promise<OperationResult> => {
+    const child = mirror
+    if (!child || child.exitCode !== null || !child.pid) return { ok: false, message: '投屏窗口还没有打开' }
+    const r = await setWindowTopmost(child.pid, on, 3000)
+    if (!r.ok) {
+      log('warn', `切换投屏窗口置顶失败：${r.message}`)
+      return { ok: false, message: `切换置顶失败：${r.message}` }
+    }
+    mirrorTopmost = r.topmost ?? on
+    emitMirrorState()
+    log('info', mirrorTopmost ? '投屏窗口已置顶' : '投屏窗口已取消置顶')
+    return {
+      ok: true,
+      message: mirrorTopmost ? '投屏窗口已置顶，不会被其它窗口挡住' : '投屏窗口已取消置顶'
+    }
+  }
+  // 串行执行；失败也要让后面的操作继续
+  const task = topmostQueue.then(run, run)
+  topmostQueue = task.catch(() => undefined)
+  return task
+}
+
 export function stopMirror(): void {
-  mirror?.kill()
+  const child = mirror
+  mirror = null
+  mirrorTopmost = false
+  child?.kill()
+  emitMirrorState()
 }
