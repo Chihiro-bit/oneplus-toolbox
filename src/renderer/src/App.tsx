@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeftRight, ArrowUpCircle, Copy, Cpu, HardDrive, Home, LifeBuoy, LockKeyhole, Power, Settings, Smartphone, Sparkles, Stethoscope, Wrench } from 'lucide-react'
 import { FEATURES } from '@shared/features'
 import type { UpdateInfo } from '@shared/types'
+import type { OtaForDevice } from '@shared/ota'
 import { AppsPage } from './apps'
 import { BootDiagPage } from './bootdiag'
 import { EdlPage } from './edl'
@@ -12,9 +13,10 @@ import { SettingsPage } from './settings'
 import { isOnePlus, MODE_LABEL, useToolbox } from './state'
 import { ToolsPage } from './tools'
 import { MonitorPage } from './monitor'
+import { OtaPage } from './ota'
 import { BrandWarning, CloseDialog, ConfirmDialog, LogPanel, ModeBadge, RunBanner, type ConfirmSpec } from './ui'
 
-export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'diagnose' | 'rescue' | 'slot' | 'edl' | 'apps' | 'tools' | 'monitor' | 'settings'
+export type PageId = 'overview' | 'reboot' | 'bootloader' | 'root' | 'diagnose' | 'rescue' | 'slot' | 'edl' | 'apps' | 'tools' | 'monitor' | 'ota' | 'settings'
 
 const NAV: { id: PageId; label: string; icon: typeof Home }[] = [
   { id: 'overview', label: '概览', icon: Home },
@@ -23,6 +25,7 @@ const NAV: { id: PageId; label: string; icon: typeof Home }[] = [
   { id: 'root', label: '一键 Root', icon: Sparkles },
   { id: 'diagnose', label: '开机诊断', icon: Stethoscope },
   { id: 'rescue', label: '救援与恢复', icon: LifeBuoy },
+  { id: 'ota', label: '全量 OTA', icon: HardDrive },
   { id: 'slot', label: 'A/B 槽位', icon: ArrowLeftRight },
   ...(FEATURES.edl ? [{ id: 'edl' as const, label: '9008 救砖', icon: HardDrive }] : []),
   { id: 'apps', label: '应用管理', icon: Copy },
@@ -34,6 +37,7 @@ export default function App() {
   const tb = useToolbox()
   const [page, setPage] = useState<PageId>('overview')
   const [focusApp, setFocusApp] = useState<{ package: string; system: boolean }>()
+  const [otaSelection, setOtaSelection] = useState<OtaForDevice>()
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null)
   const [closeAsk, setCloseAsk] = useState(false)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
@@ -53,9 +57,9 @@ export default function App() {
     })
   }, [])
 
-  const props = { tb, confirm: setConfirm, go: setPage }
+  const props = { tb, confirm: setConfirm, go: (p: PageId) => { setOtaSelection(undefined); setPage(p) } }
   const navItem = ({ id, label, icon: Icon }: (typeof NAV)[number]) => (
-    <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => { setFocusApp(undefined); setPage(id) }}>
+    <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => { setFocusApp(undefined); if (page !== id) setOtaSelection(undefined); setPage(id) }}>
       <Icon size={17} />
       {label}
     </button>
@@ -120,9 +124,10 @@ export default function App() {
           {page === 'overview' && <OverviewPage {...props} />}
           {page === 'reboot' && <RebootPage {...props} />}
           {page === 'bootloader' && <BootloaderPage {...props} />}
-          {page === 'root' && <RootPage {...props} />}
+          {page === 'root' && <RootPage {...props} ota={otaSelection} />}
           {page === 'diagnose' && <BootDiagPage {...props} />}
-          {page === 'rescue' && <RescuePage {...props} />}
+          {page === 'rescue' && <RescuePage {...props} ota={otaSelection} />}
+          {page === 'ota' && <OtaPage {...props} useOta={(target, selection) => { setOtaSelection(selection); setPage(target) }} />}
           {page === 'slot' && <SlotPage {...props} />}
           {FEATURES.edl && page === 'edl' && <EdlPage {...props} />}
           {page === 'apps' && <AppsPage key={`${device.serial}|${focusApp?.package ?? 'all'}`} {...props} focus={focusApp} />}

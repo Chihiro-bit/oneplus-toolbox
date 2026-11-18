@@ -173,7 +173,18 @@ nav {
   flex-direction: column;
   gap: 2px;
   margin-top: 8px;
+  min-height: 0;
+  overflow-y: auto;
 }
+
+.ota-fields { display: grid; grid-template-columns: 1fr .8fr 1.25fr; gap: 12px; }
+.ota-fields label { display: grid; gap: 5px; min-width: 0; font-size: 13px; color: var(--muted); }
+.ota-fields input, .ota-fields select { min-width: 0; width: 100%; padding: 8px 10px; font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+.ota-selected { background: var(--surface-2); }
+.ota-match { margin-left: 8px; }
+.ota-digest { overflow-wrap: anywhere; }
+.ota-text-button { padding: 0; border: 0; background: none; color: var(--info); text-decoration: underline; cursor: pointer; }
+@media (max-width: 850px) { .ota-fields { grid-template-columns: 1fr; } }
 
 .nav-item {
   display: flex;

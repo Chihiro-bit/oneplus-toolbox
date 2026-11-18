@@ -78,13 +78,20 @@ export async function extractImages(
   dir: string,
   ctx: OpContext,
   allowUnknown = false,
-  partitions: string[] = ['boot', 'init_boot']
+  partitions: string[] = ['boot', 'init_boot'],
+  romSha256?: string
 ): Promise<void> {
   if (!partitions.every((p) => /^[a-z_]+$/.test(p))) throw new OpError('分区名不合法')
   const names = partitions.join(' / ')
   const isUrl = /^https?:\/\//i.test(rom)
+  if (romSha256 !== undefined) {
+    if (isUrl || !/^[a-f0-9]{64}$/.test(romSha256)) throw new OpError('已校验 OTA 的 SHA-256 无效')
+    ctx.step('正在复核 OTA ZIP 的 SHA-256')
+    if (await sha256File(rom, ctx.signal) !== romSha256) throw new OpError('已校验的 OTA ZIP 已变更，请重新校验')
+  }
   ctx.step(isUrl ? '正在从链接读取 ROM 信息（只读取需要的部分）' : '正在读取 ROM 信息')
   const romTs = await payloadTimestamp(rom, dir, ctx)
+  if (romSha256 && (!romTs || !deviceTimestamp)) throw new OpError('无法确认 OTA 和手机的构建时间，请先核对版本')
   if (romTs) {
     ctx.log('info', `ROM 构建时间 = ${romTs}，手机 ro.build.date.utc = ${deviceTimestamp ?? '未知'}`)
     if (!deviceTimestamp) {
@@ -165,6 +172,7 @@ const AFTER_ROOT: Record<RootFamily, string> = {
 
 export async function root(opts: RootOptions, ctx: OpContext): Promise<OperationResult> {
   const serial = await requireSystem(ctx)
+  if (opts.romVerification && serial !== opts.romVerification.serial) throw new OpError('手机已切换，请重新匹配和选择 OTA')
 
   ctx.step('正在读取手机信息')
   const props = await getProps(serial, ctx.signal)
@@ -181,7 +189,7 @@ export async function root(opts: RootOptions, ctx: OpContext): Promise<Operation
   ctx.log('ok', `Root 方案：${scheme.name}（${FAMILY_LABEL[scheme.family]}）`)
 
   const dir = workDir()
-  await extractImages(opts.rom.trim(), props['ro.build.date.utc'], dir, ctx)
+  await extractImages(opts.rom.trim(), props['ro.build.date.utc'], dir, ctx, false, undefined, opts.romVerification?.sha256)
   const images: Record<Partition, string | undefined> = {
     boot: findFile(dir, 'boot.img'),
     init_boot: findFile(dir, 'init_boot.img')

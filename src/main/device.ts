@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DeviceInfo, DeviceMode, EdlDevice, LogLevel } from '@shared/types'
+import { detectOtaRegion } from '@shared/ota'
 import { CancelledError, exec, sleep, tools } from './exec'
 import { getKnown, remember } from './known'
 
@@ -217,11 +218,15 @@ export async function describe(base: DeviceInfo, signal?: AbortSignal): Promise<
         brand: p['ro.product.brand'],
         manufacturer: p['ro.product.manufacturer'],
         buildId: p['ro.build.display.id'],
+        buildDateUtc: p['ro.build.date.utc'],
+        otaVersion: p['ro.build.version.ota'],
+        otaModel: p['ro.product.model'],
+        otaRegion: detectOtaRegion(p['ro.build.display.id'], p['ro.oplus.image.my_region.type'], p['ro.vendor.oplus.regionmark']),
         romVersion: p['ro.build.version.oplusrom'] || p['ro.rom.version']
       }
       // Recovery 里的 getprop 是 Recovery 自己的，版本信息不可靠，只在开机时记录
       if (base.mode === 'system' && (info.brand || info.manufacturer))
-        remember(base.serial, { ...info, buildDateUtc: p['ro.build.date.utc'] })
+        remember(base.serial, info)
       return {
         ...base,
         ...info,
@@ -238,7 +243,10 @@ export async function describe(base: DeviceInfo, signal?: AbortSignal): Promise<
       ]
       const unlocked = await isUnlocked(base.serial, signal)
       const k = getKnown(base.serial)
-      const id = k && { brand: k.brand, manufacturer: k.manufacturer, model: k.model }
+      const id = k && {
+        brand: k.brand, manufacturer: k.manufacturer, model: k.model,
+        buildId: k.buildId, buildDateUtc: k.buildDateUtc, otaVersion: k.otaVersion, otaModel: k.otaModel, otaRegion: k.otaRegion
+      }
       return { ...id, ...base, device: product, slot, unlocked }
     }
   } catch (e) {

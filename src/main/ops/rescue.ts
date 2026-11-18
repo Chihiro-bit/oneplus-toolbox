@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { KNOWN_MANAGERS } from '@shared/catalog'
+import type { RomVerification } from '@shared/ota'
 import type { FlashKind, ModuleAction, OperationResult, RestoreOptions, StockPartition, UnrootOptions } from '@shared/types'
 import { describe, detect, getProps, getvar, isUnlocked, waitForMode } from '../device'
 import { sha256File } from '../download'
@@ -35,9 +36,11 @@ async function flashStock(
   partitions: StockPartition[],
   allowUnverified: boolean,
   kind: FlashKind,
-  ctx: OpContext
+  ctx: OpContext,
+  romVerification?: RomVerification
 ): Promise<string> {
   const d = await requireDevice(ctx)
+  if (romVerification && d.serial !== romVerification.serial) throw new OpError('手机已切换，请重新匹配和选择 OTA')
   if (d.mode !== 'system' && d.mode !== 'fastboot' && d.mode !== 'fastbootd')
     throw new OpError('请让手机开机（开启 USB 调试），或者进入 Fastboot 模式后再操作')
   const parts = partitions.filter((p) => STOCK_PARTITIONS.includes(p))
@@ -48,7 +51,7 @@ async function flashStock(
     throw new OpError('手机在 Fastboot 模式下读不到系统版本，工具箱也没有这台手机之前开机时的记录。请确认 ROM 版本后勾选「读不到版本时仍然继续」')
 
   const dir = workDir()
-  await extractImages(rom.trim(), build.buildDateUtc, dir, ctx, allowUnverified, parts)
+  await extractImages(rom.trim(), build.buildDateUtc, dir, ctx, allowUnverified, parts, romVerification?.sha256)
   const images = parts.map((p) => [p, findFile(dir, `${p}.img`)] as const).filter((e): e is readonly [StockPartition, string] => !!e[1])
   if (images.length === 0) throw new OpError(`没能从 ROM 中提取出 ${parts.join(' / ')}，请确认选择的是完整的全量包`)
   const missing = parts.filter((p) => !images.some(([x]) => x === p))
@@ -93,7 +96,7 @@ export async function restoreStock(opts: RestoreOptions, ctx: OpContext): Promis
  * 两个都刷回原厂就等于卸载了 Root；Root 后卡开机时，这也是最可靠的救法。
  */
 export async function unroot(opts: UnrootOptions, ctx: OpContext): Promise<OperationResult> {
-  const fb = await flashStock(opts.rom, ['init_boot', 'boot'], opts.allowUnverified, 'unroot', ctx)
+  const fb = await flashStock(opts.rom, ['init_boot', 'boot'], opts.allowUnverified, 'unroot', ctx, opts.romVerification)
 
   if (!opts.uninstallManagers)
     return { ok: true, message: '已刷回原厂镜像，手机正在重启。Root 模块文件仍保留在手机上，重新 Root 后会再次生效' }

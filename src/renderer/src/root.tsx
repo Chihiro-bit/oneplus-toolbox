@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowRight, Check, Eye, EyeOff, FileArchive, FileUp, Link2, RefreshCw, Sparkles } from 'lucide-react'
 import { FAMILY_LABEL } from '@shared/catalog'
 import type { CatalogState, PatchTarget, RootFamily, RootScheme } from '@shared/types'
+import type { OtaForDevice } from '@shared/ota'
 import { PageHeader, useGate, type PageProps } from './pages'
 import { Callout, Card } from './ui'
 
@@ -43,12 +44,13 @@ function superkeyError(key: string): string | undefined {
   return undefined
 }
 
-export function RootPage({ tb, confirm }: PageProps) {
+export function RootPage({ tb, confirm, go, ota }: PageProps & { ota?: OtaForDevice }) {
   const [catalog, setCatalog] = useState<CatalogState | null>(null)
   const [schemeId, setSchemeId] = useState('magisk')
   const [customApk, setCustomApk] = useState('')
   const [customFamily, setCustomFamily] = useState<RootFamily>('magisk')
-  const [rom, setRom] = useState('')
+  const [rom, setRom] = useState(ota?.path ?? '')
+  const verifiedOta = rom === ota?.path ? ota : undefined
   const [target, setTarget] = useState<PatchTarget>('auto')
   const [superkey, setSuperkey] = useState('')
   const [showKey, setShowKey] = useState(false)
@@ -92,6 +94,7 @@ export function RootPage({ tb, confirm }: PageProps) {
         kind: 'root',
         options: {
           rom: rom.trim(),
+          romVerification: verifiedOta && { serial: verifiedOta.serial, sha256: verifiedOta.sha256 },
           schemeId,
           customApk: schemeId === 'custom' ? customApk : undefined,
           customFamily: schemeId === 'custom' ? customFamily : undefined,
@@ -222,7 +225,10 @@ export function RootPage({ tb, confirm }: PageProps) {
           </Card>
 
           <Card>
-            <h3 className="card-title">2. 选择 ROM 包</h3>
+            <div className="card-head">
+              <h3 className="card-title">2. 选择 ROM 包</h3>
+              <button className="btn btn-ghost" onClick={() => go('ota')}>查找全量 OTA</button>
+            </div>
             <p className="muted small">
               需要与手机<strong>当前系统版本完全一致</strong>的全量包。标准 OTA 包会自动比对版本，不一致时拒绝继续。
             </p>
@@ -251,6 +257,7 @@ export function RootPage({ tb, confirm }: PageProps) {
                 浏览…
               </button>
             </div>
+            {verifiedOta && <p className="muted small">已校验全量 OTA。使用前会再次核对 SHA-256 和手机构建时间。</p>}
             {isUrl && <p className="muted small">使用链接时只会按需读取所需部分，不会下载整个 ROM 包。</p>}
 
             <h3 className="card-title">3. 修补目标</h3>

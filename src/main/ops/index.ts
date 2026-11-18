@@ -18,6 +18,7 @@ import { installApps } from './install'
 import { installModules } from './modules'
 import { network } from './network'
 import { monitor } from './monitor'
+import { verifyOta } from './ota'
 import { modules, restoreStock, undoFlash, unroot } from './rescue'
 import { root } from './root'
 import { shizuku } from './shizuku'
@@ -29,6 +30,8 @@ export async function runOperation(req: OperationRequest, ctx: OpContext): Promi
   if (!FEATURES.edl && (req.kind.startsWith('edl') || (req.kind === 'reboot' && req.target === 'edl')))
     throw new OpError('9008 / EDL 相关功能暂时停用')
   switch (req.kind) {
+    case 'verifyOta':
+      return verifyOta(req.id, req.path, ctx)
     case 'monitor':
       return monitor(req.days, ctx)
     case 'reboot':

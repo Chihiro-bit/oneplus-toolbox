@@ -14,6 +14,9 @@ export interface KnownDevice {
   /** ro.build.date.utc，与 ROM payload 的 max_timestamp 相同 */
   buildDateUtc?: string
   buildId?: string
+  otaVersion?: string
+  otaModel?: string
+  otaRegion?: string
   romVersion?: string
   /** 最后一次开机连接的时间 */
   seen: number

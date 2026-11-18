@@ -7,13 +7,13 @@ import { app, net } from 'electron'
 import type { LogLevel } from '@shared/types'
 import { CancelledError } from './exec'
 
-export function sha256File(path: string): Promise<string> {
+export function sha256File(path: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const h = createHash('sha256')
-    createReadStream(path)
+    createReadStream(path, { signal })
       .on('data', (d) => h.update(d))
       .on('end', () => resolve(h.digest('hex')))
-      .on('error', reject)
+      .on('error', error => reject(signal?.aborted ? new CancelledError() : error))
   })
 }
 

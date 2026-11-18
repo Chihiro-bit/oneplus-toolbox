@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage,
 import { MONITOR_INTERVAL, type TemperatureSample } from '@shared/monitor'
 import { MIRROR_HOTKEY, MIRROR_HOTKEY_LABEL, type CloseAction, type DeviceInfo, type LogEntry, type LogLevel, type MirrorOptions, type MirrorState, type OperationRequest, type OperationResult, type Settings } from '@shared/types'
 import { getCatalog } from './catalog'
+import { getOtaCatalog } from './ota-catalog'
 import { describe, detect, selectDevice } from './device'
 import { CancelledError, missingTools, tools } from './exec'
 import { history } from './history'
@@ -280,6 +281,7 @@ ipcMain.handle('dialog:dir', async (_e, title: string) => {
 })
 
 ipcMain.handle('catalog:get', (_e, refresh?: boolean) => getCatalog(refresh))
+ipcMain.handle('ota:catalog', () => getOtaCatalog())
 ipcMain.handle('settings:get', () => loadSettings())
 ipcMain.handle('settings:set', async (_e, s: Settings) => {
   const saved = saveSettings(s)
@@ -310,6 +312,8 @@ ipcMain.handle('app:close', (_e, action: CloseAction, remember?: boolean) => {
 
 function describeRequest(req: OperationRequest): string {
   switch (req.kind) {
+    case 'verifyOta':
+      return '校验本地全量 OTA'
     case 'monitor':
       return `读取温度与流量（最近 ${req.days} 天）`
     case 'reboot':

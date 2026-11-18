@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import { ArrowLeftRight, ArrowRight, BellOff, FileArchive, HardDriveDownload, Link2, RotateCcw, Stethoscope, ToggleLeft, ToggleRight, Trash2, Undo2 } from 'lucide-react'
 import { undoableFlash } from '@shared/bootdiag'
 import type { FlashRecord, ModuleAction } from '@shared/types'
+import type { OtaForDevice } from '@shared/ota'
 import { PageHeader, useGate, type PageProps } from './pages'
 import { Callout, Card } from './ui'
 
-export function RescuePage({ tb, confirm, go }: PageProps) {
-  const [rom, setRom] = useState('')
+export function RescuePage({ tb, confirm, go, ota }: PageProps & { ota?: OtaForDevice }) {
+  const [rom, setRom] = useState(ota?.path ?? '')
+  const verifiedOta = rom === ota?.path ? ota : undefined
   const [uninstallManagers, setUninstallManagers] = useState(true)
   const [allowUnverified, setAllowUnverified] = useState(false)
   const unrootGate = useGate(tb, ['system', 'fastboot', 'fastbootd'])
@@ -43,7 +45,11 @@ export function RescuePage({ tb, confirm, go }: PageProps) {
       ],
       confirmText: '刷回原厂',
       onConfirm: () =>
-        tb.start('刷回原厂镜像', { kind: 'unroot', options: { rom: rom.trim(), uninstallManagers, allowUnverified } })
+        tb.start('刷回原厂镜像', { kind: 'unroot', options: {
+          rom: rom.trim(),
+          romVerification: verifiedOta && { serial: verifiedOta.serial, sha256: verifiedOta.sha256 },
+          uninstallManagers, allowUnverified: !verifiedOta && allowUnverified
+        } })
     })
 
   const modules = (action: ModuleAction) => {
@@ -104,6 +110,7 @@ export function RescuePage({ tb, confirm, go }: PageProps) {
         <Card>
           <div className="card-head">
             <h3 className="card-title">刷回原厂镜像（卸载 Root）</h3>
+            <button className="btn btn-ghost" onClick={() => go('ota')}>查找全量 OTA</button>
           </div>
           <p className="muted small">
             从与手机系统版本一致的全量包中取出原厂的 <code>boot</code> 和 <code>init_boot</code>，一起刷回当前槽位。各家 Root
@@ -132,12 +139,13 @@ export function RescuePage({ tb, confirm, go }: PageProps) {
               浏览…
             </button>
           </div>
+          {verifiedOta && <p className="muted small">已校验全量 OTA。使用前会再次核对 SHA-256 和手机构建时间。</p>}
           <label className="check">
             <input type="checkbox" checked={uninstallManagers} onChange={(e) => setUninstallManagers(e.target.checked)} />
             <span>刷完等手机开机，再卸载 Root 管理器 App（Magisk / APatch / KernelSU 及其分支）</span>
           </label>
           <label className="check">
-            <input type="checkbox" checked={allowUnverified} onChange={(e) => setAllowUnverified(e.target.checked)} />
+            <input type="checkbox" checked={allowUnverified && !verifiedOta} disabled={!!verifiedOta} onChange={(e) => setAllowUnverified(e.target.checked)} />
             <span>读不到手机系统版本时仍然继续（只在 Fastboot 下、且确定 ROM 版本正确时勾选）</span>
           </label>
           <div className="card-actions">

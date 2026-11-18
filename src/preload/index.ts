@@ -8,6 +8,7 @@ function subscribe<T>(channel: string, cb: (v: T) => void): () => void {
 }
 
 const api: ToolboxApi = {
+  getOtaCatalog: () => ipcRenderer.invoke('ota:catalog'),
   getMonitorHistory: (serial) => ipcRenderer.invoke('monitor:history', serial),
   getMonitorEnabled: () => ipcRenderer.invoke('monitor:enabled'),
   setMonitorEnabled: (enabled) => ipcRenderer.invoke('monitor:enabled:set', enabled),

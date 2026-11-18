@@ -10,11 +10,14 @@
       mode: 'system',
       serial: '1a2b3c4d',
       model: 'OnePlus 13',
+      otaModel: 'PJZ110',
+      otaVersion: 'PJZ110_11.C.93_1930_202608031342',
+      otaRegion: 'CN',
       brand: 'OnePlus',
       manufacturer: 'OnePlus',
       device: 'OP5D0DL1',
       androidVersion: '16',
-      buildId: 'PJZ110_16.0.0.300(CN01)',
+      buildId: q.get('scene') === 'ota' ? 'PJZ110_16.0.10.501(CN01)' : 'PJZ110_16.0.0.300(CN01)',
       romVersion: 'V16.0.0',
       slot: 'a',
       root: 'Magisk 30.7'
@@ -127,6 +130,15 @@
   let dirPicks = 0
 
   window.toolbox = {
+    getOtaCatalog: async () => ({
+      updated: '2026-11-18T09:30:24+08:00',
+      entries: [{
+        id: '98536222526d4f1c5c929aee', device: 'OnePlus 13', model: 'PJZ110', region: 'CN',
+        version: 'PJZ110_16.0.10.501(CN01)', otaVersion: 'PJZ110_11.C.93_1930_202608031342',
+        size: 8975091784, md5: '6bd2956979795c267a062462ad7fc50f',
+        sourceUrl: 'https://component-ota-cn.allawntech.com/downloadCheck'
+      }]
+    }),
     getMonitorHistory: async () => [],
     getMonitorEnabled: async () => false,
     setMonitorEnabled: async (enabled) => enabled,

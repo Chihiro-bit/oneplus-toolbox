@@ -2,6 +2,7 @@
 
 import type { NetworkRequest, NetworkState } from './network'
 import type { MonitorApp, MonitorDays, MonitorReading, MonitorState, TemperatureSample } from './monitor'
+import type { OtaCatalog, RomVerification, VerifiedOta } from './ota'
 
 /**
  * none=未连接，system=开机(adb)，recovery=Recovery(adb)，fastboot=Bootloader 里的 Fastboot，
@@ -26,6 +27,10 @@ export interface DeviceInfo {
   device?: string
   androidVersion?: string
   buildId?: string
+  otaVersion?: string
+  otaModel?: string
+  otaRegion?: string
+  buildDateUtc?: string
   romVersion?: string
   slot?: string
   /** 仅 fastboot / fastbootd 下可读 */
@@ -130,6 +135,7 @@ export interface CatalogState {
 export interface RootOptions {
   /** 本地 ROM 路径，或 http(s) URL（payload-dumper-rust 支持按需读取） */
   rom: string
+  romVerification?: RomVerification
   /** 目录中的方案 id；为 'custom' 时使用 customApk + customFamily */
   schemeId: string
   customApk?: string
@@ -148,6 +154,7 @@ export interface RootOptions {
 export interface UnrootOptions {
   /** 与手机系统版本一致的全量包：本地路径或 http(s) URL */
   rom: string
+  romVerification?: RomVerification
   /** 刷完开机后卸载 Root 管理器 App */
   uninstallManagers: boolean
   /** Fastboot 下读不到手机的系统版本时，仍然继续（只给警告） */
@@ -355,6 +362,7 @@ export interface AppBackupManifest {
 }
 
 export type OperationRequest =
+  | { kind: 'verifyOta'; id: string; path: string }
   | { kind: 'monitor'; days: MonitorDays }
   | { kind: 'reboot'; target: RebootTarget }
   | { kind: 'unlock' }
@@ -406,6 +414,7 @@ export interface LogEntry {
 }
 
 export interface OperationResult {
+  ota?: VerifiedOta
   monitor?: MonitorState
   ok: boolean
   message: string
@@ -452,6 +461,7 @@ export interface UpdateInfo {
 export type CloseAction = 'tray' | 'quit' | 'cancel'
 
 export interface ToolboxApi {
+  getOtaCatalog(): Promise<OtaCatalog>
   getMonitorHistory(serial: string): Promise<TemperatureSample[]>
   getMonitorEnabled(): Promise<boolean>
   setMonitorEnabled(enabled: boolean): Promise<boolean>
